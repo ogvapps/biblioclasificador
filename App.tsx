@@ -105,16 +105,6 @@ const handleAddBooks = async (newBooksData: Omit<Book, 'id' | 'addedAt'>[]) => {
     }
   };
 
-    try {
-      await addBooksBatch(booksWithDates);
-      setShowSuccessToast(true);
-      setTimeout(() => setShowSuccessToast(false), 3000);
-    } catch (error) {
-      console.error("Error saving books:", error);
-      alert("Hubo un error al guardar los libros.");
-    }
-  };
-
   const handleRequestDelete = (e: React.MouseEvent, id: string, title: string, type: 'book' | 'student' = 'book') => {
     e.stopPropagation(); 
     setDeleteTarget({ id, title, type });
