@@ -8,7 +8,7 @@ export const fileToBase64 = (file: File): Promise<string> => {
     reader.readAsDataURL(file);
     reader.onload = () => {
       const result = reader.result as string;
-      // Remove data URL prefix (e.g., "data:image/jpeg;base64,")
+      // Remove data URL prefix
       if (typeof result !== 'string') {
         reject(new Error("Failed to process file"));
         return;
@@ -21,16 +21,21 @@ export const fileToBase64 = (file: File): Promise<string> => {
 };
 
 export const classifyImageWithGemini = async (base64Image: string): Promise<GeminiBookAnalysis[]> => {
-  if (!process.env.API_KEY) {
-    throw new Error("API Key not found in environment variables.");
+  
+  // ⚠️ CAMBIO 1: Usar la variable correcta para VITE
+  // Asegúrate de que en tu .env la variable se llame VITE_GEMINI_API_KEY
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("API Key not found. Revisa tu archivo .env y Vercel.");
   }
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: apiKey });
 
   const systemPrompt = `
     Eres un bibliotecario experto. Analiza la imagen.
     Identifica CADA libro visible.
-    
+     
     Para cada libro, devuelve un objeto JSON con:
     - title (string)
     - author (string)
@@ -48,7 +53,7 @@ export const classifyImageWithGemini = async (base64Image: string): Promise<Gemi
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash', // He actualizado al modelo más estable si 2.5 da problemas
       contents: {
         parts: [
           { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
@@ -57,7 +62,9 @@ export const classifyImageWithGemini = async (base64Image: string): Promise<Gemi
       },
       config: {
         systemInstruction: systemPrompt,
-        // responseMimeType: "application/json", // Sometimes causes issues with schema if models deviate, raw text + parsing is safer with our custom cleaner
+        // ⚠️ CAMBIO 2: Aumentamos el límite para que NO se corte el texto
+        maxOutputTokens: 8192, 
+        temperature: 0.7,
       }
     });
 
