@@ -24,7 +24,8 @@ export const classifyImageWithGemini = async (base64Image: string): Promise<Gemi
   
   // ⚠️ CAMBIO 1: Usar la variable correcta para VITE
   // Asegúrate de que en tu .env la variable se llame VITE_GEMINI_API_KEY
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  // Truco para evitar error TS2339
+const apiKey = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
   if (!apiKey) {
     throw new Error("API Key not found. Revisa tu archivo .env y Vercel.");
