@@ -87,11 +87,23 @@ const App: React.FC = () => {
     };
   }, []);
 
-  const handleAddBooks = async (newBooksData: Omit<Book, 'id' | 'addedAt'>[]) => {
+const handleAddBooks = async (newBooksData: Omit<Book, 'id' | 'addedAt'>[]) => {
+    // AQUÍ ESTÁ EL ARREGLO:
     const booksWithDates = newBooksData.map(b => ({
       ...b,
+      coverImage: b.coverImage || null, // <--- ESTO EVITA EL ERROR DE FIREBASE
       addedAt: new Date().toISOString()
     }));
+
+    try {
+      await addBooksBatch(booksWithDates);
+      setShowSuccessToast(true);
+      setTimeout(() => setShowSuccessToast(false), 3000);
+    } catch (error) {
+      console.error("Error saving books:", error);
+      alert("Hubo un error al guardar los libros.");
+    }
+  };
 
     try {
       await addBooksBatch(booksWithDates);
