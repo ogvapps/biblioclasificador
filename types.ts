@@ -1,4 +1,3 @@
-
 export enum EducationalStage {
   INFANTIL = "Infantil y Preescolar (3-6 años)",
   PRIMARIA_INICIAL = "Primaria - Ciclo Inicial (6-8 años)",
@@ -62,7 +61,10 @@ export interface Book {
   stage: EducationalStage;
   genre: LiteraryGenre;
   age: number; // Estimated age for verification
-  coverImage?: string; // Base64 or URL
+  
+  // 👇👇👇 AQUÍ ESTÁ EL CAMBIO IMPORTANTE 👇👇👇
+  coverImage?: string | null; // Base64 or URL (Ahora acepta null)
+  
   column?: number;
   shelf?: number;
   synopsis?: string;
