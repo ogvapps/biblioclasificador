@@ -1,7 +1,6 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Book, Loan, EducationalStage, Student, UserRole, LiteraryGenre } from './types';
-import { Plus, Download, Upload, BookOpen, Search, Library, MapPin, Settings, CheckCircle2, Trash2, Users, Hand, History, RotateCcw, CloudUpload, GraduationCap, LayoutDashboard, Lock, Unlock, FileSpreadsheet, Filter, ArrowUpDown, ArrowUp, ArrowDown, XCircle, User, UserPlus, Cloud, CloudOff, Menu, ChevronDown, ChevronUp, Printer, CheckSquare, Square, Calendar, Eye, LogIn } from 'lucide-react';
+import { Plus, Download, Upload, BookOpen, Search, Library, MapPin, Settings, CheckCircle2, Trash2, Users, Hand, History, RotateCcw, GraduationCap, LayoutDashboard, Lock, Unlock, FileSpreadsheet, Filter, ArrowUpDown, ArrowUp, ArrowDown, XCircle, User, UserPlus, Cloud, CloudOff, Menu, ChevronDown, ChevronUp, Printer, CheckSquare, Square, Calendar, Eye, LogIn } from 'lucide-react';
 import { AddBookModal } from './components/AddBookModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ConfirmationModal } from './components/ConfirmationModal';
@@ -940,3 +939,4 @@ const handleAddBooks = async (newBooksData: Omit<Book, 'id' | 'addedAt'>[]) => {
 };
 
 export default App;
+// Forzando actualizacion
