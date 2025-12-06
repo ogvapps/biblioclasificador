@@ -44,7 +44,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
           </div>
           <h2 className="text-xl font-bold text-slate-800">Acceso Bibliotecario</h2>
           <p className="text-xs text-slate-500 mt-1 text-center">
-            Introduce tu PIN de Admin (2025) o Ayudante (1875) para acceder.
+            
           </p>
         </div>
 
