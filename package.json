@@ -9,21 +9,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "^1.31.0",
+    "@google/genai": "latest",
     "firebase": "^10.8.0",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.344.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-<<<<<<< HEAD
     "xlsx": "^0.18.5"
-=======
-    "lucide-react": "^0.344.0",
-    "firebase": "^10.8.0",
-    "xlsx": "^0.18.5",
-    "html5-qrcode": "^2.3.8",
-    "@google/genai": "latest"
->>>>>>> 22e9bfcd25696f998d782ec68bf8a95686869b5e
   },
   "devDependencies": {
     "@types/node": "^20.11.24",
