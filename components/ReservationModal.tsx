@@ -17,7 +17,9 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({ isOpen, onCl
   useEffect(() => {
     if (isOpen) {
       const unsubscribe = subscribeToStudents(setRegisteredStudents);
-      return () => unsubscribe();
+      return () => {
+        unsubscribe();
+      };
     }
   }, [isOpen]);
 

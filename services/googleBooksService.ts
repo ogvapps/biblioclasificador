@@ -1,120 +1,110 @@
-
 import { EducationalStage, LiteraryGenre, GeminiBookAnalysis } from '../types';
 
-// Helper to download image URL to Base64 (needed for local storage)
-const urlToBase64 = async (url: string): Promise<string | undefined> => {
-  try {
-    // We try to fetch the image. Note: This might hit CORS issues depending on the source,
-    // but Google Books thumbnails usually allow simple loading. 
-    // For a robust app, a backend proxy is better, but here we try client-side.
-    const response = await fetch(url);
-    const blob = await response.blob();
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const res = reader.result as string;
-        // Return without prefix for consistency with existing app logic
-        resolve(res.split(',')[1]); 
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  } catch (e) {
-    console.warn("Could not convert cover URL to base64", e);
-    return undefined;
-  }
-};
+interface GoogleBookItem {
+  volumeInfo?: {
+    title?: string;
+    authors?: string[];
+    description?: string;
+    categories?: string[];
+    pageCount?: number;
+    publishedDate?: string;
+    imageLinks?: {
+      thumbnail?: string;
+      smallThumbnail?: string;
+    };
+  };
+}
 
-const mapGoogleCategoriesToGenre = (categories: string[]): LiteraryGenre => {
-  const catString = categories.join(' ').toLowerCase();
-  
-  if (catString.includes('fantasy') || catString.includes('magic') || catString.includes('science fiction') || catString.includes('sci-fi')) return LiteraryGenre.FANTASIA;
-  if (catString.includes('mystery') || catString.includes('thriller') || catString.includes('crime') || catString.includes('detective')) return LiteraryGenre.MISTERIO;
-  if (catString.includes('poetry') || catString.includes('drama') || catString.includes('play')) return LiteraryGenre.POESIA;
-  if (catString.includes('comic') || catString.includes('graphic novel') || catString.includes('manga')) return LiteraryGenre.COMICS;
-  if (catString.includes('biography') || catString.includes('autobiography') || catString.includes('memoir') || catString.includes('history')) return LiteraryGenre.BIOGRAFIAS;
-  if (catString.includes('juvenile nonfiction') || catString.includes('science') || catString.includes('education')) return LiteraryGenre.INFORMATIVO;
-  
-  return LiteraryGenre.NOVELA; // Default
-};
+// Heuristics to infer educational stage from categories, page count and description
+function inferEducationalStage(categories: string[], description: string, pageCount?: number): { stage: EducationalStage; age: number } {
+  const text = `${categories.join(' ')} ${description}`.toLowerCase();
 
-const estimateStageFromMetadata = (categories: string[], pageCount: number, description: string): EducationalStage => {
-  const text = (categories.join(' ') + ' ' + description).toLowerCase();
-
-  // 1. Explicit Age Groups
-  if (text.includes('young adult') || text.includes('ya ') || text.includes('teen')) return EducationalStage.SECUNDARIA;
-  if (text.includes('juvenile') || text.includes('children')) {
-    // Sub-classify based on page count
-    if (pageCount < 40) return EducationalStage.INFANTIL;
-    if (pageCount < 100) return EducationalStage.PRIMARIA_INICIAL;
-    if (pageCount < 200) return EducationalStage.PRIMARIA_MEDIO;
-    return EducationalStage.PRIMARIA_SUPERIOR;
-  }
-  
-  // 2. Page Count Heuristics for unknown categories
-  if (pageCount > 0) {
-    if (pageCount < 30) return EducationalStage.INFANTIL;
-    if (pageCount < 80) return EducationalStage.PRIMARIA_INICIAL;
-    if (pageCount < 150) return EducationalStage.PRIMARIA_MEDIO;
-    if (pageCount < 250) return EducationalStage.PRIMARIA_SUPERIOR;
-    if (pageCount < 400) return EducationalStage.SECUNDARIA;
+  if (text.includes('juvenile') || text.includes('infantil') || text.includes('preescolar') || (pageCount && pageCount <= 40)) {
+    if (text.includes('bebé') || text.includes('preescolar') || (pageCount && pageCount <= 24)) {
+      return { stage: EducationalStage.INFANTIL, age: 4 };
+    }
+    return { stage: EducationalStage.PRIMARIA_INICIAL, age: 7 };
   }
 
-  return EducationalStage.REFERENCIA; // Default for heavy books or unknown
-};
-
-const estimateAgeFromStage = (stage: EducationalStage): number => {
-  switch (stage) {
-    case EducationalStage.INFANTIL: return 4;
-    case EducationalStage.PRIMARIA_INICIAL: return 7;
-    case EducationalStage.PRIMARIA_MEDIO: return 9;
-    case EducationalStage.PRIMARIA_SUPERIOR: return 11;
-    case EducationalStage.SECUNDARIA: return 14;
-    case EducationalStage.REFERENCIA: return 16;
-    default: return 0;
+  if (text.includes('young adult') || text.includes('juvenil') || text.includes('secundaria') || text.includes('eso')) {
+    return { stage: EducationalStage.SECUNDARIA, age: 14 };
   }
-};
 
-export const searchBookByISBN = async (isbn: string): Promise<GeminiBookAnalysis> => {
-  // 1. Query Google Books API
-  // Using generic search for ISBN. 
-  const cleanIsbn = isbn.replace(/-/g, '').trim();
-  const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`);
-  
+  if (text.includes('diccionario') || text.includes('enciclopedia') || text.includes('atlas') || text.includes('referencia')) {
+    return { stage: EducationalStage.REFERENCIA, age: 12 };
+  }
+
+  if (pageCount && pageCount < 100) {
+    return { stage: EducationalStage.PRIMARIA_MEDIO, age: 9 };
+  }
+
+  if (pageCount && pageCount <= 180) {
+    return { stage: EducationalStage.PRIMARIA_SUPERIOR, age: 11 };
+  }
+
+  return { stage: EducationalStage.SECUNDARIA, age: 13 };
+}
+
+// Heuristics to infer literary genre from categories and description
+function inferLiteraryGenre(categories: string[], description: string): LiteraryGenre {
+  const text = `${categories.join(' ')} ${description}`.toLowerCase();
+
+  if (text.includes('comic') || text.includes('manga') || text.includes('graphic novel') || text.includes('novela gráfica') || text.includes('tebeo')) {
+    return LiteraryGenre.COMICS;
+  }
+  if (text.includes('fantasy') || text.includes('fantasía') || text.includes('science fiction') || text.includes('ciencia ficción') || text.includes('magia')) {
+    return LiteraryGenre.FANTASIA;
+  }
+  if (text.includes('mystery') || text.includes('misterio') || text.includes('detective') || text.includes('suspense') || text.includes('policíaca')) {
+    return LiteraryGenre.MISTERIO;
+  }
+  if (text.includes('poetry') || text.includes('poesía') || text.includes('drama') || text.includes('teatro')) {
+    return LiteraryGenre.POESIA;
+  }
+  if (text.includes('biography') || text.includes('biografía') || text.includes('autobiography') || text.includes('historia') || text.includes('history')) {
+    return LiteraryGenre.BIOGRAFIAS;
+  }
+  if (text.includes('non-fiction') || text.includes('no ficción') || text.includes('science') || text.includes('ciencia') || text.includes('encyclopedia') || text.includes('education')) {
+    return LiteraryGenre.INFORMATIVO;
+  }
+
+  return LiteraryGenre.NOVELA;
+}
+
+export async function searchBookByISBN(isbn: string): Promise<GeminiBookAnalysis & { coverImage?: string | null }> {
+  const cleanIsbn = isbn.replace(/[-\s]/g, '').trim();
+
+  if (!cleanIsbn) {
+    throw new Error('ISBN no válido');
+  }
+
+  const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(cleanIsbn)}`);
+
   if (!response.ok) {
-    throw new Error("Error connecting to Google Books");
+    throw new Error(`Error al consultar Google Books API (${response.status})`);
   }
 
   const data = await response.json();
 
   if (!data.items || data.items.length === 0) {
-    throw new Error("Libro no encontrado con este ISBN.");
+    throw new Error(`No se encontró ningún libro con el ISBN ${isbn}`);
   }
 
-  const info = data.items[0].volumeInfo;
+  const item: GoogleBookItem = data.items[0];
+  const info = item.volumeInfo || {};
 
-  // 2. Extract Data
-  const title = info.title || "Sin Título";
-  const author = info.authors ? info.authors.join(', ') : "Autor Desconocido";
-  const synopsis = info.description || "";
+  const title = info.title || 'Título desconocido';
+  const author = info.authors ? info.authors.join(', ') : 'Autor desconocido';
+  const synopsis = info.description ? (info.description.length > 300 ? `${info.description.substring(0, 297)}...` : info.description) : 'Sin sinopsis disponible.';
   const categories = info.categories || [];
-  const pageCount = info.pageCount || 0;
-  
-  // 3. Map to App Enums
-  const genre = mapGoogleCategoriesToGenre(categories);
-  const stage = estimateStageFromMetadata(categories, pageCount, synopsis);
-  const age = estimateAgeFromStage(stage);
 
-  // 4. Handle Cover Image
-  // Use highest resolution available, usually 'thumbnail' or 'smallThumbnail'
-  let coverBase64 = undefined;
-  if (info.imageLinks) {
-     const imgUrl = info.imageLinks.thumbnail || info.imageLinks.smallThumbnail;
-     if (imgUrl) {
-       // Google http links cause mixed content warnings, ensure https
-       const secureUrl = imgUrl.replace('http://', 'https://');
-       coverBase64 = await urlToBase64(secureUrl);
-     }
+  const { stage, age } = inferEducationalStage(categories, synopsis, info.pageCount);
+  const genre = inferLiteraryGenre(categories, synopsis);
+
+  // Normalize image URL to https
+  let coverImage = info.imageLinks?.thumbnail || info.imageLinks?.smallThumbnail || null;
+  if (coverImage && coverImage.startsWith('http://')) {
+    coverImage = coverImage.replace('http://', 'https://');
   }
 
   return {
@@ -124,9 +114,7 @@ export const searchBookByISBN = async (isbn: string): Promise<GeminiBookAnalysis
     stage,
     genre,
     synopsis,
-    reasoning: "Importado desde Google Books API",
-    // We add the cover directly to the analysis object, though strictly the interface doesn't have it, 
-    // we will merge it in the modal component.
-    coverImage: coverBase64 
-  } as GeminiBookAnalysis & { coverImage?: string }; 
-};
+    reasoning: `Clasificado automáticamente a partir de datos de Google Books (${categories.join(', ') || 'General'}).`,
+    coverImage
+  };
+}

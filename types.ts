@@ -25,12 +25,16 @@ export enum BookCondition {
   DAMAGED = "Dañado"
 }
 
-export type UserRole = 'ADMIN' | 'ASSISTANT' | 'STUDENT';
+export type UserRole = 'ADMIN' | 'ASSISTANT' | 'STUDENT' | 'KIOSK';
 
 export interface Student {
   id: string;
   name: string;
   course: string;
+  barcode?: string;
+  email?: string;
+  phone?: string;
+  sanctionedUntil?: string; // ISO date for penalties
   registeredAt: string;
 }
 
@@ -61,18 +65,21 @@ export interface Book {
   stage: EducationalStage;
   genre: LiteraryGenre;
   age: number; // Estimated age for verification
-  
+
   // 👇👇👇 AQUÍ ESTÁ EL CAMBIO IMPORTANTE 👇👇👇
   coverImage?: string | null; // Base64 or URL (Ahora acepta null)
-  
+
   column?: number;
   shelf?: number;
   synopsis?: string;
   addedAt: string;
   currentLoanId?: string; // If present, book is currently loaned out
+  status?: 'AVAILABLE' | 'LOANED';
+  condition?: BookCondition;
   rating?: number; // Average rating
   totalRatings?: number; // Count of ratings
   reservation?: Reservation; // Who is waiting for this book
+  barcode?: string; // For physical scanning
 }
 
 export interface GeminiBookAnalysis {

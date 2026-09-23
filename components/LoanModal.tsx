@@ -1,8 +1,21 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Calendar, User, BookOpen, Save, GraduationCap, Users } from 'lucide-react';
-import { Book, BookCondition, Student } from '../types';
-import { lendBook, subscribeToStudents } from '../services/storageService';
+import { Book, BookCondition, Student, Loan } from '../types';
+import { saveLoan, subscribeToStudents, subscribeToLoans, updateBook } from '../services/storageService';
+// Helper to register loan and update book status
+const lendBook = async (loanData: Omit<Loan, 'id'>) => {
+  const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2, 9));
+  const loan: Loan = { ...loanData, id };
+  await saveLoan(loan);
+  const books: Book[] = JSON.parse(localStorage.getItem('books') || '[]');
+  const bookIndex = books.findIndex(b => b.id === loan.bookId);
+  if (bookIndex > -1) {
+    books[bookIndex].status = 'LOANED';
+    books[bookIndex].currentLoanId = loan.id;
+    await updateBook(books[bookIndex]);
+  }
+};
 
 interface LoanModalProps {
   isOpen: boolean;
@@ -24,15 +37,19 @@ const GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
 export const LoanModal: React.FC<LoanModalProps> = ({ isOpen, onClose, book }) => {
   const [studentName, setStudentName] = useState('');
   const [registeredStudents, setRegisteredStudents] = useState<Student[]>([]);
-  
+
+  const [loans, setLoans] = useState<Loan[]>([]);
+
   // Split Course into Grade and Group for standardized dropdowns
   const [grade, setGrade] = useState('');
   const [group, setGroup] = useState('A');
 
+  const maxDays = parseInt(localStorage.getItem('biblio_max_loan_days') || localStorage.getItem('biblio_max_days') || '15');
+
   const [loanDate, setLoanDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState(() => {
     const d = new Date();
-    d.setDate(d.getDate() + 15);
+    d.setDate(d.getDate() + maxDays);
     return d.toISOString().split('T')[0];
   });
   const [condition, setCondition] = useState<BookCondition>(BookCondition.GOOD);
@@ -40,7 +57,11 @@ export const LoanModal: React.FC<LoanModalProps> = ({ isOpen, onClose, book }) =
   useEffect(() => {
     if (isOpen) {
       const unsubscribe = subscribeToStudents(setRegisteredStudents);
-      return () => unsubscribe();
+      const unsubscribeLoans = subscribeToLoans(setLoans);
+      return () => {
+        unsubscribe();
+        unsubscribeLoans();
+      };
     }
   }, [isOpen]);
 
@@ -48,7 +69,7 @@ export const LoanModal: React.FC<LoanModalProps> = ({ isOpen, onClose, book }) =
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setStudentName(val);
-    
+
     // Check if name matches a registered student
     const match = registeredStudents.find(s => s.name.toLowerCase() === val.toLowerCase());
     if (match) {
@@ -56,12 +77,12 @@ export const LoanModal: React.FC<LoanModalProps> = ({ isOpen, onClose, book }) =
       // Course format: "Grade Group" or just "Grade"
       const lastSpaceIndex = match.course.lastIndexOf(' ');
       if (lastSpaceIndex !== -1) {
-         const potentialGroup = match.course.substring(lastSpaceIndex + 1);
-         if (GROUPS.includes(potentialGroup)) {
-            setGrade(match.course.substring(0, lastSpaceIndex));
-            setGroup(potentialGroup);
-            return;
-         }
+        const potentialGroup = match.course.substring(lastSpaceIndex + 1);
+        if (GROUPS.includes(potentialGroup)) {
+          setGrade(match.course.substring(0, lastSpaceIndex));
+          setGroup(potentialGroup);
+          return;
+        }
       }
       setGrade(match.course);
       setGroup('Sin Grupo');
@@ -73,8 +94,28 @@ export const LoanModal: React.FC<LoanModalProps> = ({ isOpen, onClose, book }) =
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!studentName || !grade) {
-      alert("Por favor completa el nombre del alumno y selecciona el curso.");
+      alert("Por favor completa el nombre del lector y selecciona el curso.");
       return;
+    }
+
+    // Checking max books per user
+    const maxBooks = parseInt(localStorage.getItem('biblio_max_books_per_user') || localStorage.getItem('biblio_max_books') || '3');
+    const studentActiveLoans = loans.filter(l => l.studentName.toLowerCase() === studentName.toLowerCase() && l.status === 'ACTIVE');
+
+    if (studentActiveLoans.length >= maxBooks) {
+      alert(`Este lector ya tiene el máximo permitido de préstamos activos (${maxBooks}).`);
+      return;
+    }
+
+    // Checking if student is sanctioned
+    const match = registeredStudents.find(s => s.name.toLowerCase() === studentName.toLowerCase());
+    if (match?.sanctionedUntil) {
+      const sanctionDate = new Date(match.sanctionedUntil);
+      const today = new Date();
+      if (sanctionDate > today) {
+        alert(`Este lector está sancionado hasta el ${sanctionDate.toLocaleDateString()} y no puede llevar libros.`);
+        return;
+      }
     }
 
     const fullCourse = group === "Sin Grupo" ? grade : `${grade} ${group}`;
@@ -122,7 +163,7 @@ export const LoanModal: React.FC<LoanModalProps> = ({ isOpen, onClose, book }) =
 
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Nombre Alumno</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Nombre Lector</label>
               <div className="relative">
                 <User className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
                 <input
@@ -135,13 +176,13 @@ export const LoanModal: React.FC<LoanModalProps> = ({ isOpen, onClose, book }) =
                   required
                 />
                 <datalist id="student-suggestions">
-                   {registeredStudents.map(s => (
-                     <option key={s.id} value={s.name}>{s.course}</option>
-                   ))}
+                  {registeredStudents.map(s => (
+                    <option key={s.id} value={s.name}>{s.course}</option>
+                  ))}
                 </datalist>
               </div>
             </div>
-            
+
             <div className="col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Curso / Clase</label>
               <div className="grid grid-cols-3 gap-2">
@@ -164,7 +205,7 @@ export const LoanModal: React.FC<LoanModalProps> = ({ isOpen, onClose, book }) =
                     onChange={(e) => setGroup(e.target.value)}
                     className="pl-8 w-full rounded-lg border-slate-300 focus:ring-indigo-500 focus:border-indigo-500 py-2 border text-sm bg-white appearance-none"
                   >
-                     {GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+                    {GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
                   </select>
                 </div>
               </div>

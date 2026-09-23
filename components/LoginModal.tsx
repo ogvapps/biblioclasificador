@@ -19,7 +19,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const role = verifyUserPin(pin);
-    
+
     if (role) {
       onLoginSuccess(role);
       setPin('');
@@ -37,14 +37,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
         <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
           <X className="w-5 h-5" />
         </button>
-        
+
         <div className="flex flex-col items-center mb-6">
           <div className="w-14 h-14 bg-indigo-50 rounded-full flex items-center justify-center mb-4 text-indigo-600">
             <Lock className="w-7 h-7" />
           </div>
-          <h2 className="text-xl font-bold text-slate-800">Acceso Bibliotecario</h2>
+          <h2 className="text-xl font-bold text-slate-800">Acceso de Gestión</h2>
           <p className="text-xs text-slate-500 mt-1 text-center">
-            Introduce tu PIN de Admin (2025) o Ayudante (1875) para acceder.
+
           </p>
         </div>
 
@@ -64,12 +64,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
               autoFocus
             />
           </div>
-          
+
           {error && (
             <p className="text-red-500 text-xs text-center mb-4 font-bold">PIN incorrecto</p>
           )}
 
-          <button 
+          <button
             type="submit"
             className="w-full py-2.5 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-colors"
           >
