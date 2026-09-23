@@ -16,14 +16,23 @@ export function fileToBase64(file: File): Promise<string> {
 
 export async function classifyImageWithGemini(base64Image: string, mimeType = 'image/jpeg'): Promise<GeminiBookAnalysis[]> {
   try {
+    const geminiKey = typeof localStorage !== 'undefined' ? (localStorage.getItem('biblio_gemini_api_key') || '') : '';
+    const groqKey = typeof localStorage !== 'undefined' ? (localStorage.getItem('biblio_groq_api_key') || '') : '';
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    if (geminiKey) headers['x-gemini-api-key'] = geminiKey;
+    if (groqKey) headers['x-groq-api-key'] = groqKey;
+
     const response = await fetch('/api/classify', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify({
         image: base64Image,
-        mimeType: mimeType
+        mimeType: mimeType,
+        geminiApiKey: geminiKey,
+        groqApiKey: groqKey
       })
     });
 

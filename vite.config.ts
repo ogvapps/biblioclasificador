@@ -25,6 +25,12 @@ export default defineConfig(({ mode }) => {
 
             req.on('end', async () => {
               try {
+                if (!process.env.GEMINI_API_KEY && env.GEMINI_API_KEY) {
+                  process.env.GEMINI_API_KEY = env.GEMINI_API_KEY;
+                }
+                if (!process.env.VITE_GEMINI_API_KEY && env.VITE_GEMINI_API_KEY) {
+                  process.env.VITE_GEMINI_API_KEY = env.VITE_GEMINI_API_KEY;
+                }
                 if (!process.env.GROQ_API_KEY && env.GROQ_API_KEY) {
                   process.env.GROQ_API_KEY = env.GROQ_API_KEY;
                 }
@@ -33,9 +39,18 @@ export default defineConfig(({ mode }) => {
                 const classifyModule = await import('./api/classify.js');
                 const handler = classifyModule.default;
 
+                const headers = new Headers();
+                headers.set('Content-Type', 'application/json');
+                if (req.headers['x-gemini-api-key']) {
+                  headers.set('x-gemini-api-key', String(req.headers['x-gemini-api-key']));
+                }
+                if (req.headers['x-groq-api-key']) {
+                  headers.set('x-groq-api-key', String(req.headers['x-groq-api-key']));
+                }
+
                 const webReq = new Request('http://localhost/api/classify', {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
+                  headers,
                   body: body || '{}'
                 });
 

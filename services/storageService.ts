@@ -6,7 +6,9 @@ import {
   syncLoanToFirestore,
   syncStudentToFirestore,
   deleteStudentFromFirestore,
-  initFirestore as _initFirestore
+  initFirestore as _initFirestore,
+  pullFromFirestore,
+  pushToFirestore
 } from './firestoreSync';
 import {
   idbGetBooks,
@@ -66,6 +68,9 @@ const initializeStorage = async () => {
     notifyBooks();
     notifyLoans();
     notifyStudents();
+
+    // Background sync with cloud if configured (non-blocking)
+    syncWithCloud().catch(() => {});
   } catch (err) {
     console.warn('Storage fallback to localStorage:', err);
     cachedBooks = JSON.parse(localStorage.getItem('books') || '[]');
@@ -121,6 +126,65 @@ export const isCloudConnected = (): boolean => isFirestoreReady();
  * Returns true if connection succeeded.
  */
 export const initFirestoreSync = async (): Promise<boolean> => _initFirestore();
+
+/**
+ * Pulls latest records from Firestore and merges them into local IndexedDB without overwriting local changes.
+ */
+export const syncWithCloud = async (): Promise<boolean> => {
+  if (!hasFirebaseConfig()) return false;
+  try {
+    const ready = await _initFirestore();
+    if (!ready) return false;
+
+    const remote = await pullFromFirestore();
+    let updated = false;
+
+    if (remote.books && remote.books.length > 0) {
+      const map = new Map<string, Book>();
+      // Remote first, then local (or merge)
+      remote.books.forEach(b => map.set(b.id, b));
+      cachedBooks.forEach(b => map.set(b.id, b));
+      cachedBooks = Array.from(map.values());
+      await idbSaveBooksBatch(cachedBooks);
+      notifyBooks();
+      updated = true;
+    }
+
+    if (remote.loans && remote.loans.length > 0) {
+      const map = new Map<string, Loan>();
+      remote.loans.forEach(l => map.set(l.id, l));
+      cachedLoans.forEach(l => map.set(l.id, l));
+      cachedLoans = Array.from(map.values());
+      for (const loan of cachedLoans) await idbSaveLoan(loan);
+      notifyLoans();
+      updated = true;
+    }
+
+    if (remote.students && remote.students.length > 0) {
+      const map = new Map<string, Student>();
+      remote.students.forEach(s => map.set(s.id, s));
+      cachedStudents.forEach(s => map.set(s.id, s));
+      cachedStudents = Array.from(map.values());
+      await idbSaveStudentsBatch(cachedStudents);
+      notifyStudents();
+      updated = true;
+    }
+
+    return true;
+  } catch (err) {
+    console.debug('Cloud sync skipped (offline or not configured):', err);
+    return false;
+  }
+};
+
+/**
+ * Pushes entire local database to Firestore (useful for initial migration or manual sync)
+ */
+export const pushAllToCloud = async (): Promise<void> => {
+  const ready = await _initFirestore();
+  if (!ready) throw new Error('No se pudo conectar con Firestore. Revisa las credenciales en Configuración.');
+  await pushToFirestore(getBooks(), getLoans(), getStudents());
+};
 
 // Observers
 const listeners = {

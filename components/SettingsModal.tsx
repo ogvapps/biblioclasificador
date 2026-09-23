@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
-import { X, Save, KeyRound, Cloud, LogOut, Image as ImageIcon, Paintbrush, BookOpen, Clock, Building2, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
-import { setAdminPin, saveFirebaseConfig, getFirebaseConfig, clearFirebaseConfig, isCloudConnected, initFirestoreSync } from '../services/storageService';
+import { X, Save, KeyRound, Cloud, LogOut, Image as ImageIcon, Paintbrush, BookOpen, Clock, Building2, CheckCircle, XCircle, RefreshCw, Sparkles, UploadCloud, DownloadCloud } from 'lucide-react';
+import { setAdminPin, saveFirebaseConfig, getFirebaseConfig, clearFirebaseConfig, isCloudConnected, initFirestoreSync, syncWithCloud, pushAllToCloud } from '../services/storageService';
 
 
 interface SettingsModalProps {
@@ -24,6 +23,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [maxLoanDays, setMaxLoanDays] = useState(() => localStorage.getItem('biblio_max_loan_days') || '15');
   const [maxBooksPerUser, setMaxBooksPerUser] = useState(() => localStorage.getItem('biblio_max_books_per_user') || '3');
   const [sanctionDays, setSanctionDays] = useState(() => localStorage.getItem('biblio_sanction_days') || '1');
+
+  // AI API Keys State
+  const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('biblio_gemini_api_key') || '');
+  const [groqApiKey, setGroqApiKey] = useState(() => localStorage.getItem('biblio_groq_api_key') || '');
 
   // Firebase Config State
   const [apiKey, setApiKey] = useState('');
@@ -50,8 +53,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         setHasConfig(true);
       }
       setCloudConnected(isCloudConnected());
+      setGeminiApiKey(localStorage.getItem('biblio_gemini_api_key') || '');
+      setGroqApiKey(localStorage.getItem('biblio_groq_api_key') || '');
     }
   }, [isOpen]);
+
+  const handlePushToCloud = async () => {
+    try {
+      setIsSyncing(true);
+      await pushAllToCloud();
+      alert("✅ Catálogo local subido a Firebase correctamente.");
+    } catch (err: any) {
+      alert("Error al subir a la nube: " + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handlePullFromCloud = async () => {
+    try {
+      setIsSyncing(true);
+      const ok = await syncWithCloud();
+      if (ok) {
+        alert("✅ Datos sincronizados desde Firebase.");
+      } else {
+        alert("No se pudo sincronizar. Comprueba tu conexión a internet y las credenciales.");
+      }
+    } catch (err: any) {
+      alert("Error al sincronizar: " + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -75,6 +108,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       localStorage.setItem('biblio_max_loan_days', maxLoanDays);
       localStorage.setItem('biblio_max_books_per_user', maxBooksPerUser);
       localStorage.setItem('biblio_sanction_days', sanctionDays);
+
+      // Save AI API Keys
+      localStorage.setItem('biblio_gemini_api_key', geminiApiKey.trim());
+      localStorage.setItem('biblio_groq_api_key', groqApiKey.trim());
 
       // Dispatch event to update App immediately
       window.dispatchEvent(new Event('biblio_settings_changed'));
@@ -222,6 +259,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </div>
           </div>
 
+          {/* AI Configuration Section */}
+          <div className="mb-8">
+            <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              Inteligencia Artificial (Cámara y Fotos)
+            </h3>
+            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-4">
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Permite clasificar libros automáticamente a partir de una foto tomada con la cámara del móvil.
+              </p>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                  Google Gemini API Key (Recomendado y Gratuito)
+                </label>
+                <input
+                  type="password"
+                  value={geminiApiKey}
+                  onChange={(e) => setGeminiApiKey(e.target.value)}
+                  placeholder="AIzaSy... (Pega tu clave aquí)"
+                  className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-xs"
+                />
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Obtén tu clave gratuita en{' '}
+                  <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline font-semibold">
+                    Google AI Studio →
+                  </a>
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                  Groq API Key (Alternativo)
+                </label>
+                <input
+                  type="password"
+                  value={groqApiKey}
+                  onChange={(e) => setGroqApiKey(e.target.value)}
+                  placeholder="gsk_... (opcional)"
+                  className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-xs"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Firebase Config Section */}
           <div className="mb-6">
             <div className="flex justify-between items-center mb-3">
@@ -247,6 +329,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 Ingresa los datos de tu proyecto Firebase (Firestore) para sincronizar el catálogo entre dispositivos.{' '}
                 <a href="https://console.firebase.google.com" target="_blank" rel="noopener noreferrer" className="text-indigo-500 underline">Abrir consola Firebase →</a>
               </p>
+
+              {hasConfig && (
+                <div className="flex flex-col sm:flex-row gap-2 py-2 border-y border-slate-200">
+                  <button
+                    type="button"
+                    onClick={handlePushToCloud}
+                    disabled={isSyncing}
+                    className="flex-1 py-2 px-3 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold hover:bg-indigo-100 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                  >
+                    <UploadCloud className="w-3.5 h-3.5" />
+                    Subir local a Firebase
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePullFromCloud}
+                    disabled={isSyncing}
+                    className="flex-1 py-2 px-3 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold hover:bg-slate-200 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                  >
+                    <DownloadCloud className="w-3.5 h-3.5" />
+                    Descargar de Firebase
+                  </button>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">API Key</label>

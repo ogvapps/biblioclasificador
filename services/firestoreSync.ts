@@ -65,6 +65,20 @@ export async function initFirestore(): Promise<boolean> {
   }
 }
 
+function sanitizeForFirestore<T extends Record<string, any>>(obj: T): T {
+  const result: any = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (val !== undefined) {
+      if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+        result[key] = sanitizeForFirestore(val);
+      } else {
+        result[key] = val;
+      }
+    }
+  }
+  return result;
+}
+
 /**
  * Pushes local data to Firestore in bulk.
  * Uses batch writes (max 500 docs per batch).
@@ -89,7 +103,7 @@ export async function pushToFirestore(
       const batch = writeBatch(_db);
       for (const item of chunk) {
         const ref = doc(collection(_db, collectionName), item[idField]);
-        batch.set(ref, item);
+        batch.set(ref, sanitizeForFirestore(item));
       }
       await batch.commit();
     }
@@ -145,7 +159,7 @@ export async function pullFromFirestore(): Promise<{
 export async function syncBookToFirestore(book: Book): Promise<void> {
   if (!_isReady || !_db) return;
   const { collection, doc, setDoc } = await import('firebase/firestore');
-  await setDoc(doc(collection(_db, 'books'), book.id), book);
+  await setDoc(doc(collection(_db, 'books'), book.id), sanitizeForFirestore(book));
 }
 
 /**
@@ -163,7 +177,7 @@ export async function deleteBookFromFirestore(bookId: string): Promise<void> {
 export async function syncLoanToFirestore(loan: Loan): Promise<void> {
   if (!_isReady || !_db) return;
   const { collection, doc, setDoc } = await import('firebase/firestore');
-  await setDoc(doc(collection(_db, 'loans'), loan.id), loan);
+  await setDoc(doc(collection(_db, 'loans'), loan.id), sanitizeForFirestore(loan));
 }
 
 /**
@@ -172,7 +186,7 @@ export async function syncLoanToFirestore(loan: Loan): Promise<void> {
 export async function syncStudentToFirestore(student: Student): Promise<void> {
   if (!_isReady || !_db) return;
   const { collection, doc, setDoc } = await import('firebase/firestore');
-  await setDoc(doc(collection(_db, 'students'), student.id), student);
+  await setDoc(doc(collection(_db, 'students'), student.id), sanitizeForFirestore(student));
 }
 
 /**
