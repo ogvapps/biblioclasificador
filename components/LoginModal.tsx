@@ -42,9 +42,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
           <div className="w-14 h-14 bg-indigo-50 rounded-full flex items-center justify-center mb-4 text-indigo-600">
             <Lock className="w-7 h-7" />
           </div>
-          <h2 className="text-xl font-bold text-slate-800">Acceso de Gestión</h2>
+          <h2 className="text-xl font-bold text-slate-800">Acceso Bibliotecario</h2>
           <p className="text-xs text-slate-500 mt-1 text-center">
-
           </p>
         </div>
 
