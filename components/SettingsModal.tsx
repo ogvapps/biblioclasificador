@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, KeyRound, Cloud, LogOut, Image as ImageIcon, Paintbrush, BookOpen, Clock, Building2 } from 'lucide-react';
-import { setAdminPin, saveFirebaseConfig, getFirebaseConfig, clearFirebaseConfig } from '../services/storageService';
+import { X, Save, KeyRound, Cloud, LogOut, Image as ImageIcon, Paintbrush, BookOpen, Clock, Building2, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { setAdminPin, saveFirebaseConfig, getFirebaseConfig, clearFirebaseConfig, isCloudConnected, initFirestoreSync } from '../services/storageService';
+
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -33,6 +34,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [appId, setAppId] = useState('');
 
   const [hasConfig, setHasConfig] = useState(false);
+  const [cloudConnected, setCloudConnected] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -46,12 +49,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         setAppId(config.appId || '');
         setHasConfig(true);
       }
+      setCloudConnected(isCloudConnected());
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     try {
       // Save PIN if changed
       if (newPin.trim().length > 0) {
@@ -75,8 +79,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       // Dispatch event to update App immediately
       window.dispatchEvent(new Event('biblio_settings_changed'));
 
-
-      // Save Firebase Config
+      // Save Firebase Config and attempt real connection
       if (apiKey && projectId) {
         const config = {
           apiKey,
@@ -86,14 +89,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           messagingSenderId,
           appId
         };
-        saveFirebaseConfig(config); // This reloads the page
-      } else {
-        onClose();
+        saveFirebaseConfig(config);
+
+        // Attempt Firestore initialization with the new config
+        setIsSyncing(true);
+        const connected = await initFirestoreSync();
+        setCloudConnected(connected);
+        setIsSyncing(false);
+
+        if (connected) {
+          alert("✅ Configuración guardada. Conexión con Firestore establecida correctamente.");
+        } else {
+          alert("⚠️ Configuración guardada, pero no se pudo conectar con Firestore. Verifica que las credenciales sean correctas y que Firestore esté habilitado en tu proyecto Firebase.");
+        }
       }
+
+      onClose();
     } catch (e: any) {
+      setIsSyncing(false);
       alert(`Error: ${e.message}`);
     }
   };
+
 
   const handleDisconnect = () => {
     if (confirm("¿Estás seguro de desconectar la base de datos? La aplicación volverá a modo local.")) {
@@ -211,6 +228,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               <h3 className="font-semibold text-slate-800 flex items-center gap-2">
                 <Cloud className="w-4 h-4 text-slate-400" />
                 Conexión Nube (Firebase)
+                {/* Connection status badge */}
+                {hasConfig && (
+                  cloudConnected
+                    ? <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-semibold"><CheckCircle className="w-3 h-3" />Conectado</span>
+                    : <span className="inline-flex items-center gap-1 text-xs text-red-500 font-semibold"><XCircle className="w-3 h-3" />Desconectado</span>
+                )}
               </h3>
               {hasConfig && (
                 <button onClick={handleDisconnect} className="text-xs text-red-500 hover:text-red-700 font-bold flex items-center gap-1">
@@ -221,7 +244,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
               <p className="text-xs text-slate-500 mb-2">
-                Ingresa los datos de tu proyecto Firebase para sincronizar entre dispositivos.
+                Ingresa los datos de tu proyecto Firebase (Firestore) para sincronizar el catálogo entre dispositivos.{' '}
+                <a href="https://console.firebase.google.com" target="_blank" rel="noopener noreferrer" className="text-indigo-500 underline">Abrir consola Firebase →</a>
               </p>
 
               <div>
@@ -257,13 +281,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
           <button
             onClick={handleSave}
-            className="w-full py-3 px-4 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-colors flex items-center justify-center gap-2"
+            disabled={isSyncing}
+            className="w-full py-3 px-4 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-wait"
           >
-            <Save className="w-4 h-4" />
-            Guardar y Reiniciar
+            {isSyncing
+              ? <><RefreshCw className="w-4 h-4 animate-spin" /> Conectando con Firebase...</>
+              : <><Save className="w-4 h-4" /> Guardar</>
+            }
           </button>
         </div>
       </div>
     </div>
   );
 };
+

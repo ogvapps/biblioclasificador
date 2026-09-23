@@ -1,4 +1,8 @@
-import * as XLSX from 'xlsx';
+/**
+ * excelService.ts — Usando ExcelJS (sustituye xlsx que tenía CVE-GHSA-4r6h y CVE-GHSA-5pgg)
+ */
+import { Workbook } from 'exceljs';
+import type { Workbook as WorkbookType } from 'exceljs';
 import { Book, Loan, Student, EducationalStage, LiteraryGenre } from '../types';
 
 export interface ExcelSheet {
@@ -53,18 +57,77 @@ export const prepareExcelData = (loans: Loan[], books: Book[], students: Student
   ];
 };
 
-export const exportToExcel = (
+// ─── Helper: build workbook from sheets array ──────────────────────────────────
+const buildWorkbook = (sheets: ExcelSheet[]): WorkbookType => {
+  const wb = new Workbook();
+  wb.creator = 'BiblioClasificador';
+  wb.created = new Date();
+
+  for (const { sheetName, data } of sheets) {
+    const ws = wb.addWorksheet(sheetName);
+
+    if (data.length === 0) {
+      ws.addRow(['(Sin datos)']);
+      continue;
+    }
+
+    // Header row from first object keys
+    const headers = Object.keys(data[0]);
+    ws.addRow(headers);
+
+    // Bold + blue header style
+    const headerRow = ws.getRow(1);
+    headerRow.eachCell(cell => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    });
+    headerRow.height = 20;
+
+    // Data rows
+    for (const row of data) {
+      ws.addRow(headers.map(h => row[h] ?? ''));
+    }
+
+    // Auto-fit column widths (approximate)
+    ws.columns.forEach(col => {
+      let maxLen = 10;
+      col.eachCell?.({ includeEmpty: false }, cell => {
+        const len = cell.value ? String(cell.value).length : 0;
+        if (len > maxLen) maxLen = len;
+      });
+      col.width = Math.min(maxLen + 4, 60);
+    });
+  }
+
+  return wb;
+};
+
+// ─── Helper: trigger browser download ─────────────────────────────────────────
+const downloadWorkbook = async (wb: WorkbookType, filename: string): Promise<void> => {
+  const cleanName = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`;
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = cleanName;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+// ─── Public: Export ────────────────────────────────────────────────────────────
+export const exportToExcel = async (
   inputData: ExcelSheet[] | Book[] | any[],
   filename: string
-): void => {
-  const wb = XLSX.utils.book_new();
-
-  // Determine whether inputData is a list of sheets or a list of items (e.g. books)
-  let sheets: ExcelSheet[] = [];
+): Promise<void> => {
+  let sheets: ExcelSheet[];
 
   if (Array.isArray(inputData) && inputData.length > 0 && 'sheetName' in inputData[0]) {
     sheets = inputData as ExcelSheet[];
-  } else if (Array.isArray(inputData)) {
+  } else {
     // Treat as array of books
     const books = inputData as Book[];
     sheets = [
@@ -87,109 +150,103 @@ export const exportToExcel = (
     ];
   }
 
-  sheets.forEach(({ sheetName, data }) => {
-    const ws = XLSX.utils.json_to_sheet(data.length > 0 ? data : [{}]);
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  });
-
-  const cleanFilename = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`;
-  XLSX.writeFile(wb, cleanFilename);
+  const wb = buildWorkbook(sheets);
+  await downloadWorkbook(wb, filename);
 };
 
+// ─── Public: Import books ──────────────────────────────────────────────────────
 export const importFromExcel = async (file: File): Promise<Partial<Book>[]> => {
   const buffer = await file.arrayBuffer();
-  const wb = XLSX.read(buffer, { type: 'array' });
+  const wb = new Workbook();
+  await wb.xlsx.load(buffer);
 
-  // Use 'Inventario' sheet or first available sheet
-  const sheetName = wb.SheetNames.includes('Inventario') ? 'Inventario' : wb.SheetNames[0];
-  const ws = wb.Sheets[sheetName];
-  const rawData: any[] = XLSX.utils.sheet_to_json(ws);
+  // Use 'Inventario' sheet or first available
+  const ws = wb.getWorksheet('Inventario') ?? wb.worksheets[0];
+  if (!ws) return [];
 
-  const parsedBooks: Partial<Book>[] = rawData.map(row => {
-    // Map Spanish column headers or standard names
+  const rows: any[][] = [];
+  ws.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber === 1) return; // skip header
+    rows.push((row.values as any[]).slice(1)); // values[0] is undefined in exceljs
+  });
+
+  // Extract header from row 1
+  const headerRow = ws.getRow(1);
+  const headers: string[] = (headerRow.values as any[]).slice(1).map(String);
+
+  const parsedBooks: Partial<Book>[] = rows.map(rowVals => {
+    const row: Record<string, any> = {};
+    headers.forEach((h, i) => { row[h] = rowVals[i] ?? ''; });
+
     const title = String(row['Título'] || row['Titulo'] || row['Title'] || '').trim();
     const author = String(row['Autor'] || row['Author'] || 'Desconocido').trim();
     const stageRaw = String(row['Etapa'] || row['Stage'] || '').trim();
     const genreRaw = String(row['Género'] || row['Genero'] || row['Genre'] || '').trim();
-    const age = parseInt(row['Edad'] || row['Edad Recomendada'] || '8', 10);
-    const column = parseInt(row['Columna'] || row['Column'] || '1', 10);
-    const shelf = parseInt(row['Balda'] || row['Estante'] || row['Shelf'] || '1', 10);
+    const age = parseInt(String(row['Edad'] || row['Edad Recomendada'] || '8'), 10);
+    const column = parseInt(String(row['Columna'] || row['Column'] || '1'), 10);
+    const shelf = parseInt(String(row['Balda'] || row['Estante'] || row['Shelf'] || '1'), 10);
     const barcode = row['Código de Barras'] || row['Barcode'] ? String(row['Código de Barras'] || row['Barcode']) : undefined;
     const synopsis = row['Sinopsis'] || row['Synopsis'] ? String(row['Sinopsis'] || row['Synopsis']) : undefined;
 
-    // Match stage enum
     const stage = Object.values(EducationalStage).find(s => s.toLowerCase() === stageRaw.toLowerCase()) || EducationalStage.REFERENCIA;
-
-    // Match genre enum
     const genre = Object.values(LiteraryGenre).find(g => g.toLowerCase() === genreRaw.toLowerCase()) || LiteraryGenre.NOVELA;
 
     return {
-      title,
-      author,
-      stage,
-      genre,
+      title, author, stage, genre,
       age: isNaN(age) ? 8 : age,
       column: isNaN(column) ? 1 : column,
       shelf: isNaN(shelf) ? 1 : shelf,
-      barcode,
-      synopsis
+      barcode, synopsis
     };
   }).filter(b => b.title && b.title.length > 0);
 
   return parsedBooks;
 };
 
+// ─── Public: Import students ───────────────────────────────────────────────────
 export const importStudentsFromExcel = async (file: File): Promise<Partial<Student>[]> => {
   const buffer = await file.arrayBuffer();
-  const wb = XLSX.read(buffer, { type: 'array' });
+  const wb = new Workbook();
+  await wb.xlsx.load(buffer);
 
-  const sheetName = wb.SheetNames.includes('Lectores') ? 'Lectores' : wb.SheetNames[0];
-  const ws = wb.Sheets[sheetName];
-  const rawData: any[] = XLSX.utils.sheet_to_json(ws);
+  const ws = wb.getWorksheet('Lectores') ?? wb.worksheets[0];
+  if (!ws) return [];
 
-  const parsedStudents: Partial<Student>[] = rawData.map(row => {
-    const name = String(row['Nombre'] || row['Name'] || row['Alumno'] || '').trim();
-    const course = String(row['Grupo/Curso'] || row['Curso'] || row['Course'] || row['Clase'] || 'Sin Grupo').trim();
-    const email = row['Email'] || row['Correo'] ? String(row['Email'] || row['Correo']).trim() : undefined;
-    const phone = row['Teléfono'] || row['Telefono'] || row['Phone'] ? String(row['Teléfono'] || row['Telefono'] || row['Phone']).trim() : undefined;
-    const barcode = row['Código de Barras'] || row['Barcode'] ? String(row['Código de Barras'] || row['Barcode']).trim() : undefined;
+  const headerRow = ws.getRow(1);
+  const headers: string[] = (headerRow.values as any[]).slice(1).map(String);
 
-    return {
-      name,
-      course,
-      email,
-      phone,
-      barcode
-    };
-  }).filter(s => s.name && s.name.length > 0);
+  const parsedStudents: Partial<Student>[] = [];
+  ws.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber === 1) return;
+    const rowVals = (row.values as any[]).slice(1);
+    const r: Record<string, any> = {};
+    headers.forEach((h, i) => { r[h] = rowVals[i] ?? ''; });
+
+    const name = String(r['Nombre'] || r['Name'] || r['Alumno'] || '').trim();
+    const course = String(r['Grupo/Curso'] || r['Curso'] || r['Course'] || r['Clase'] || 'Sin Grupo').trim();
+    const email = r['Email'] || r['Correo'] ? String(r['Email'] || r['Correo']).trim() : undefined;
+    const phone = r['Teléfono'] || r['Telefono'] || r['Phone'] ? String(r['Teléfono'] || r['Telefono'] || r['Phone']).trim() : undefined;
+    const barcode = r['Código de Barras'] || r['Barcode'] ? String(r['Código de Barras'] || r['Barcode']).trim() : undefined;
+
+    if (name) parsedStudents.push({ name, course, email, phone, barcode });
+  });
 
   return parsedStudents;
 };
 
-export const downloadStudentTemplate = (): void => {
-  const sampleData = [
+// ─── Public: Download student template ────────────────────────────────────────
+export const downloadStudentTemplate = async (): Promise<void> => {
+  const sheets: ExcelSheet[] = [
     {
-      'Nombre': 'García López, María',
-      'Curso': '1º ESO A',
-      'Email': 'maria.garcia@colegio.es',
-      'Teléfono': '600123456'
-    },
-    {
-      'Nombre': 'Martínez Ruiz, Alejandro',
-      'Curso': '4º Primaria B',
-      'Email': '',
-      'Teléfono': '611987654'
-    },
-    {
-      'Nombre': 'Rodríguez Gómez, Lucas',
-      'Curso': 'Infantil 5 años A',
-      'Email': 'padres.lucas@email.com',
-      'Teléfono': '622345678'
+      sheetName: 'Lectores',
+      data: [
+        { 'Nombre': 'García López, María', 'Grupo/Curso': '1º ESO A', 'Email': 'maria.garcia@colegio.es', 'Teléfono': '600123456' },
+        { 'Nombre': 'Martínez Ruiz, Alejandro', 'Grupo/Curso': '4º Primaria B', 'Email': '', 'Teléfono': '611987654' },
+        { 'Nombre': 'Rodríguez Gómez, Lucas', 'Grupo/Curso': 'Infantil 5 años A', 'Email': 'padres.lucas@email.com', 'Teléfono': '622345678' }
+      ]
     }
   ];
 
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(sampleData);
-  XLSX.utils.book_append_sheet(wb, ws, 'Lectores');
-  XLSX.writeFile(wb, 'Plantilla_Alumnos.xlsx');
+  const wb = buildWorkbook(sheets);
+  await downloadWorkbook(wb, 'Plantilla_Alumnos.xlsx');
 };

@@ -64,6 +64,16 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: 'dist',
+      chunkSizeWarningLimit: 700,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            // Split heavy libraries into separate lazy-loaded chunks
+            if (id.includes('node_modules/exceljs')) return 'vendor-excel';
+            if (id.includes('node_modules/firebase') || id.includes('node_modules/@firebase')) return 'vendor-firebase';
+          }
+        }
+      }
     }
   };
 });

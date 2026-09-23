@@ -158,8 +158,8 @@ const App: React.FC = () => {
     }
   };
 
-  const handleExport = () => {
-    exportToExcel(prepareExcelData(loans, books, registeredStudents), `${appName.replace(/\s+/g, '_')}_Export`);
+  const handleExport = async () => {
+    await exportToExcel(prepareExcelData(loans, books, registeredStudents), `${appName.replace(/\s+/g, '_')}_Export`);
   };
 
   const handleImportClick = () => {

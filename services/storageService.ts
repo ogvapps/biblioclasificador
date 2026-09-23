@@ -1,5 +1,14 @@
 import { Book, Loan, Student, BookCondition, UserRole } from '../types';
 import {
+  isFirestoreReady,
+  syncBookToFirestore,
+  deleteBookFromFirestore,
+  syncLoanToFirestore,
+  syncStudentToFirestore,
+  deleteStudentFromFirestore,
+  initFirestore as _initFirestore
+} from './firestoreSync';
+import {
   idbGetBooks,
   idbSaveBook,
   idbSaveBooksBatch,
@@ -105,11 +114,13 @@ export const clearFirebaseConfig = (): void => {
   localStorage.removeItem('firebase_config');
 };
 
-export const isCloudConnected = (): boolean => hasFirebaseConfig();
+export const isCloudConnected = (): boolean => isFirestoreReady();
 
-export const migrateFromLocalStorage = async (): Promise<void> => {
-  await initializeStorage();
-};
+/**
+ * Initialize Firestore sync. Call this on app start and after saving Firebase config.
+ * Returns true if connection succeeded.
+ */
+export const initFirestoreSync = async (): Promise<boolean> => _initFirestore();
 
 // Observers
 const listeners = {
@@ -215,6 +226,8 @@ export const saveBook = async (book: Book): Promise<void> => {
   await idbSaveBook(book);
   syncLocalStorageSafe('books', cachedBooks);
   notifyBooks();
+  // Incremental cloud sync (fire-and-forget)
+  syncBookToFirestore(book).catch(() => {});
 };
 
 export const updateBook = saveBook;
@@ -230,6 +243,8 @@ export const addBooksBatch = async (newBooksData: Omit<Book, 'id'>[]): Promise<B
   await idbSaveBooksBatch(newBooks);
   syncLocalStorageSafe('books', cachedBooks);
   notifyBooks();
+  // Cloud sync all new books (fire-and-forget)
+  newBooks.forEach(book => syncBookToFirestore(book).catch(() => {}));
   return newBooks;
 };
 
@@ -238,6 +253,7 @@ export const deleteBook = async (id: string): Promise<void> => {
   await idbDeleteBook(id);
   syncLocalStorageSafe('books', cachedBooks);
   notifyBooks();
+  deleteBookFromFirestore(id).catch(() => {});
 };
 
 export const reserveBook = async (bookId: string, studentName: string): Promise<void> => {
@@ -250,6 +266,7 @@ export const reserveBook = async (bookId: string, studentName: string): Promise<
     await idbSaveBook(cachedBooks[bookIndex]);
     syncLocalStorageSafe('books', cachedBooks);
     notifyBooks();
+    syncBookToFirestore(cachedBooks[bookIndex]).catch(() => {});
   }
 };
 
@@ -260,6 +277,7 @@ export const cancelReservation = async (bookId: string): Promise<void> => {
     await idbSaveBook(cachedBooks[bookIndex]);
     syncLocalStorageSafe('books', cachedBooks);
     notifyBooks();
+    syncBookToFirestore(cachedBooks[bookIndex]).catch(() => {});
   }
 };
 
@@ -274,6 +292,7 @@ export const saveStudent = async (student: Student): Promise<void> => {
   await idbSaveStudent(student);
   syncLocalStorageSafe('students', cachedStudents);
   notifyStudents();
+  syncStudentToFirestore(student).catch(() => {});
 };
 
 export const addStudent = async (studentData: Omit<Student, 'id'>): Promise<Student> => {
@@ -297,6 +316,7 @@ export const addStudentsBatch = async (studentsData: Omit<Student, 'id'>[]): Pro
   await idbSaveStudentsBatch(newStudents);
   syncLocalStorageSafe('students', cachedStudents);
   notifyStudents();
+  newStudents.forEach(s => syncStudentToFirestore(s).catch(() => {}));
   return newStudents;
 };
 
@@ -305,6 +325,7 @@ export const deleteStudent = async (id: string): Promise<void> => {
   await idbDeleteStudent(id);
   syncLocalStorageSafe('students', cachedStudents);
   notifyStudents();
+  deleteStudentFromFirestore(id).catch(() => {});
 };
 
 // Loan Operations
@@ -318,7 +339,9 @@ export const saveLoan = async (loan: Loan): Promise<void> => {
   await idbSaveLoan(loan);
   syncLocalStorageSafe('loans', cachedLoans);
   notifyLoans();
+  syncLoanToFirestore(loan).catch(() => {});
 };
+
 
 export const returnBookWithRef = async (
   loan: Loan,
@@ -336,6 +359,7 @@ export const returnBookWithRef = async (
     await idbSaveLoan(cachedLoans[loanIndex]);
     syncLocalStorageSafe('loans', cachedLoans);
     notifyLoans();
+    syncLoanToFirestore(cachedLoans[loanIndex]).catch(() => {});
   }
 
   // 2. Update book: CRITICAL FIX - clear currentLoanId
@@ -355,8 +379,10 @@ export const returnBookWithRef = async (
     await idbSaveBook(cachedBooks[bookIndex]);
     syncLocalStorageSafe('books', cachedBooks);
     notifyBooks();
+    syncBookToFirestore(cachedBooks[bookIndex]).catch(() => {});
   }
 };
+
 
 // Full Database Backup / Restore (Useful to transfer between mobile and library PC)
 export const exportFullDatabaseJSON = (): void => {
