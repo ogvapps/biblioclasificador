@@ -24,8 +24,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [maxBooksPerUser, setMaxBooksPerUser] = useState(() => localStorage.getItem('biblio_max_books_per_user') || '3');
   const [sanctionDays, setSanctionDays] = useState(() => localStorage.getItem('biblio_sanction_days') || '1');
 
-  // AI API Keys State
-  const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('biblio_gemini_api_key') || '');
+  // Groq API Key State
   const [groqApiKey, setGroqApiKey] = useState(() => localStorage.getItem('biblio_groq_api_key') || '');
 
   // Firebase Config State
@@ -53,7 +52,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         setHasConfig(true);
       }
       setCloudConnected(isCloudConnected());
-      setGeminiApiKey(localStorage.getItem('biblio_gemini_api_key') || '');
       setGroqApiKey(localStorage.getItem('biblio_groq_api_key') || '');
     }
   }, [isOpen]);
@@ -109,8 +107,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       localStorage.setItem('biblio_max_books_per_user', maxBooksPerUser);
       localStorage.setItem('biblio_sanction_days', sanctionDays);
 
-      // Save AI API Keys
-      localStorage.setItem('biblio_gemini_api_key', geminiApiKey.trim());
+      // Save Groq API Key
       localStorage.setItem('biblio_groq_api_key', groqApiKey.trim());
 
       // Dispatch event to update App immediately
@@ -263,43 +260,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           <div className="mb-8">
             <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-amber-500" />
-              Inteligencia Artificial (Cámara y Fotos)
+              Inteligencia Artificial (Groq Vision)
             </h3>
             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-4">
               <p className="text-xs text-slate-500 leading-relaxed">
-                Permite clasificar libros automáticamente a partir de una foto tomada con la cámara del móvil.
+                Clasificación de libros a partir de la foto con el móvil usando Groq Vision.
               </p>
 
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                  Google Gemini API Key (Recomendado y Gratuito)
-                </label>
-                <input
-                  type="password"
-                  value={geminiApiKey}
-                  onChange={(e) => setGeminiApiKey(e.target.value)}
-                  placeholder="AIzaSy... (Pega tu clave aquí)"
-                  className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-xs"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 block">
-                  Obtén tu clave gratuita en{' '}
-                  <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline font-semibold">
-                    Google AI Studio →
-                  </a>
-                </span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                  Groq API Key (Alternativo)
+                  Groq API Key
                 </label>
                 <input
                   type="password"
                   value={groqApiKey}
                   onChange={(e) => setGroqApiKey(e.target.value)}
-                  placeholder="gsk_... (opcional)"
+                  placeholder="gsk_... (Pega tu clave de Groq aquí)"
                   className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-xs"
                 />
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Obtén tu clave gratuita en{' '}
+                  <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline font-semibold">
+                    console.groq.com/keys →
+                  </a>
+                </span>
               </div>
             </div>
           </div>

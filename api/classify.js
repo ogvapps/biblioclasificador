@@ -22,13 +22,13 @@ const VALID_GENRES = [
     "Cómics / Novela Gráfica"
 ];
 
-const SYSTEM_PROMPT = `Eres un bibliotecario escolar experto en literatura infantil y juvenil española.
+const SYSTEM_PROMPT = `Eres un bibliotecario escolar experto en literatura y libros educativos.
 Analiza la imagen e identifica CADA libro visible (portada o lomo). Devuelve EXCLUSIVAMENTE un JSON Array válido.
 
 Por cada libro detectado, genera un objeto con EXACTAMENTE estas propiedades:
 1. title: (string) Título completo del libro.
 2. author: (string) Autor del libro (o "Desconocido").
-3. age: (number) Edad recomendada aproximada (ej. 4, 8, 12).
+3. age: (number) Edad recomendada aproximada (ej. 4, 8, 12, 16).
 4. stage: (string) UNA de estas opciones EXACTAS según la etapa escolar:
    - "Infantil y Preescolar (3-6 años)"
    - "Primaria - Ciclo Inicial (6-8 años)"
@@ -123,74 +123,15 @@ function cleanAndParseJSON(rawText) {
     });
 }
 
-// Clasificación usando Google Gemini (2.0 Flash con fallback a 1.5 Flash)
-async function classifyWithGemini(apiKey, base64Image, mimeType) {
-    const models = ["gemini-2.0-flash", "gemini-1.5-flash"];
-    let lastError = null;
-
-    for (const model of models) {
-        try {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-            const res = await fetch(url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    contents: [
-                        {
-                            parts: [
-                                {
-                                    inlineData: {
-                                        mimeType: mimeType || 'image/jpeg',
-                                        data: base64Image
-                                    }
-                                },
-                                { text: SYSTEM_PROMPT }
-                            ]
-                        }
-                    ],
-                    generationConfig: {
-                        responseMimeType: "application/json",
-                        temperature: 0.1
-                    }
-                })
-            });
-
-            if (!res.ok) {
-                const errText = await res.text();
-                lastError = `Gemini (${model}) error ${res.status}: ${errText}`;
-                console.warn(lastError);
-                continue;
-            }
-
-            const data = await res.json();
-            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (!text) {
-                lastError = `Gemini (${model}) respuesta vacía`;
-                continue;
-            }
-
-            return cleanAndParseJSON(text);
-        } catch (e) {
-            lastError = `Gemini (${model}) excepción: ${e.message}`;
-            console.warn(lastError);
-        }
-    }
-
-    throw new Error(lastError || "No se pudo clasificar la imagen con Google Gemini");
-}
-
-// Clasificación usando Groq
+// Clasificación usando Groq Vision (modelo multimodal oficial activo en Groq)
 async function classifyWithGroq(apiKey, base64Image, mimeType) {
-    // Modelos Groq ordenados por preferencia
-    const groqModels = [
-        "meta-llama/llama-4-scout-17b-16e-instruct",
-        "llama-3.2-11b-vision-preview",
-        "llama-3.2-90b-vision-preview"
+    const models = [
+        "qwen/qwen3.8-27b"
     ];
 
     let lastError = null;
 
-    for (const model of groqModels) {
+    for (const model of models) {
         try {
             const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
                 method: "POST",
@@ -213,7 +154,7 @@ async function classifyWithGroq(apiKey, base64Image, mimeType) {
                         }
                     ],
                     temperature: 0.1,
-                    max_tokens: 4000
+                    max_tokens: 2000
                 })
             });
 
@@ -258,85 +199,52 @@ export default async function handler(request) {
             });
         }
 
-function isCleanKey(k) {
-    if (!k || typeof k !== 'string') return false;
-    const s = k.trim();
-    if (s.length < 10) return false;
-    if (/placeholder|your_key|your-key|putyourkey|example|undefined|null/i.test(s)) return false;
-    return true;
-}
+        function isCleanKey(k) {
+            if (!k || typeof k !== 'string') return false;
+            const s = k.trim();
+            if (s.length < 10) return false;
+            if (/placeholder|your_key|your-key|putyourkey|example|undefined|null/i.test(s)) return false;
+            return true;
+        }
 
-        // Obtener claves desde headers, body o variables de entorno (filtrando placeholders)
-        const rawGemini = request.headers.get('x-gemini-api-key') ||
-            body.geminiApiKey ||
-            process.env.GEMINI_API_KEY ||
-            process.env.VITE_GEMINI_API_KEY ||
-            '';
-        const geminiKey = isCleanKey(rawGemini) ? rawGemini.trim() : '';
-
+        // Obtener clave de Groq desde cabecera, cuerpo o variables de entorno
         const rawGroq = request.headers.get('x-groq-api-key') ||
             body.groqApiKey ||
             process.env.GROQ_API_KEY ||
             '';
         const groqKey = isCleanKey(rawGroq) ? rawGroq.trim() : '';
 
-        // 1. Prioridad: Google Gemini (modelo oficial multimodal estable)
-        if (geminiKey) {
-            try {
-                const results = await classifyWithGemini(geminiKey, image, mimeType);
-                return new Response(JSON.stringify(results), {
-                    status: 200,
-                    headers: { 'Content-Type': 'application/json' }
-                });
-            } catch (geminiErr) {
-                console.error("Fallo Gemini:", geminiErr);
-                // Si también hay Groq, intentar fallback
-                if (!groqKey) {
-                    let userMsg = geminiErr.message;
-                    if (/API_KEY_INVALID|API key not valid/i.test(userMsg)) {
-                        userMsg = "La clave de Google Gemini no es válida. Puedes generar una gratuita en https://aistudio.google.com/apikey y configurarla en Ajustes (⚙️).";
-                    } else if (/has not been used in project|disabled/i.test(userMsg)) {
-                        userMsg = "La API de Gemini no está habilitada en tu proyecto de Google Cloud. Habilítala o crea una clave directa y gratuita en https://aistudio.google.com/apikey.";
-                    } else if (/429|RESOURCE_EXHAUSTED/i.test(userMsg)) {
-                        userMsg = "Se ha superado la cuota de peticiones por minuto. Espera unos segundos o introduce una clave propia en Ajustes (⚙️).";
-                    }
-
-                    return new Response(JSON.stringify({
-                        error: userMsg
-                    }), {
-                        status: 500,
-                        headers: { 'Content-Type': 'application/json' }
-                    });
-                }
-            }
+        if (!groqKey) {
+            return new Response(JSON.stringify({
+                error: "No se ha configurado la clave de Groq API (gsk_...). Puedes introducirla en Ajustes (icono ⚙️ en la app) o en las variables de entorno de Vercel (GROQ_API_KEY)."
+            }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' }
+            });
         }
 
-        // 2. Alternativa: Groq
-        if (groqKey) {
-            try {
-                const results = await classifyWithGroq(groqKey, image, mimeType);
-                return new Response(JSON.stringify(results), {
-                    status: 200,
-                    headers: { 'Content-Type': 'application/json' }
-                });
-            } catch (groqErr) {
-                console.error("Fallo Groq:", groqErr);
-                return new Response(JSON.stringify({
-                    error: `Error al clasificar con Groq: ${groqErr.message}`
-                }), {
-                    status: 500,
-                    headers: { 'Content-Type': 'application/json' }
-                });
+        try {
+            const results = await classifyWithGroq(groqKey, image, mimeType);
+            return new Response(JSON.stringify(results), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        } catch (groqErr) {
+            console.error("Fallo Groq:", groqErr);
+            let userMsg = groqErr.message;
+            if (/invalid_api_key|Incorrect API key/i.test(userMsg)) {
+                userMsg = "La clave de Groq API no es válida. Revisa tu clave en console.groq.com/keys y configúrala en Ajustes (⚙️).";
+            } else if (/rate_limit_exceeded|429/i.test(userMsg)) {
+                userMsg = "Se ha superado el límite de velocidad de Groq. Espera un minuto e inténtalo de nuevo.";
             }
-        }
 
-        // 3. Ni Gemini ni Groq configurados
-        return new Response(JSON.stringify({
-            error: "No se ha configurado ninguna clave de Inteligencia Artificial (Gemini). Configura tu clave gratuita de Google AI Studio en Ajustes (icono ⚙️ arriba a la derecha de la app) para clasificar libros con la cámara."
-        }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' }
-        });
+            return new Response(JSON.stringify({
+                error: `Error al clasificar con Groq: ${userMsg}`
+            }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
 
     } catch (error) {
         console.error("API Handler Error:", error);
