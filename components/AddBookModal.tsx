@@ -137,6 +137,22 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ isOpen, onClose, onA
     }
   };
 
+  const addManualBook = (imageCover?: string) => {
+    const newBook: StagedBook = {
+      tempId: Math.random().toString(36).substr(2, 9),
+      title: '',
+      author: '',
+      age: 8,
+      stage: EducationalStage.PRIMARIA_MEDIO,
+      genre: LiteraryGenre.NOVELA,
+      synopsis: '',
+      reasoning: 'Entrada manual',
+      coverImage: imageCover || previewImage || undefined
+    };
+    setStagedBooks(prev => [newBook, ...prev]);
+    setError(null);
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -380,6 +396,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ isOpen, onClose, onA
               <Camera className="w-5 h-5" />
               <span className="font-bold">Cámara</span>
             </button>
+            <button
+              onClick={() => addManualBook()}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all whitespace-nowrap flex-shrink-0 hover:bg-emerald-50 text-emerald-700 font-medium border border-dashed border-emerald-300`}
+            >
+              <Plus className="w-5 h-5 text-emerald-600" />
+              <span className="font-bold">Manual</span>
+            </button>
           </div>
 
           <div className="flex-1 p-4 flex flex-col min-h-0 overflow-y-auto">
@@ -503,16 +526,36 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ isOpen, onClose, onA
 
           <div className="flex-1 overflow-y-auto p-4 sm:p-5 bg-slate-50/50 min-h-0">
             {error && (
-              <div className="p-4 bg-red-50 text-red-700 rounded-lg text-sm border border-red-200 mb-4 flex items-start gap-2">
-                <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                <p>{error}</p>
+              <div className="p-4 bg-red-50 text-red-700 rounded-xl text-sm border border-red-200 mb-4 flex flex-col gap-3">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5 text-red-500" />
+                  <p className="leading-relaxed">{error}</p>
+                </div>
+                {previewImage && (
+                  <button
+                    type="button"
+                    onClick={() => addManualBook(previewImage)}
+                    className="self-start py-2 px-3 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 flex items-center gap-1.5 shadow transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Rellenar datos manualmente con esta foto
+                  </button>
+                )}
               </div>
             )}
 
             {stagedBooks.length === 0 && !loading && !error && (
-              <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10 opacity-60">
+              <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10 opacity-75">
                 <BookOpen className="w-16 h-16 mb-4 text-slate-300" />
-                <p>Los libros añadidos aparecerán aquí.</p>
+                <p className="mb-3 text-sm">Escanea un ISBN, haz una foto o añade un libro manualmente.</p>
+                <button
+                  type="button"
+                  onClick={() => addManualBook()}
+                  className="py-2.5 px-4 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 flex items-center gap-2 shadow-sm transition-all"
+                >
+                  <Plus className="w-4 h-4 text-indigo-600" />
+                  + Añadir libro manualmente
+                </button>
               </div>
             )}
 
@@ -568,7 +611,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ isOpen, onClose, onA
                         <input
                           type="number"
                           value={book.age}
-                          onChange={(e) => updateStagedBook(book.tempId, 'age', parseInt(e.target.value))}
+                          onChange={(e) => updateStagedBook(book.tempId, 'age', parseInt(e.target.value) || 0)}
                           className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded bg-slate-50 outline-none"
                         />
                       </div>

@@ -258,17 +258,27 @@ export default async function handler(request) {
             });
         }
 
-        // Obtener claves desde headers, body o variables de entorno
-        const geminiKey = request.headers.get('x-gemini-api-key') ||
+function isCleanKey(k) {
+    if (!k || typeof k !== 'string') return false;
+    const s = k.trim();
+    if (s.length < 10) return false;
+    if (/placeholder|your_key|your-key|putyourkey|example|undefined|null/i.test(s)) return false;
+    return true;
+}
+
+        // Obtener claves desde headers, body o variables de entorno (filtrando placeholders)
+        const rawGemini = request.headers.get('x-gemini-api-key') ||
             body.geminiApiKey ||
             process.env.GEMINI_API_KEY ||
             process.env.VITE_GEMINI_API_KEY ||
             '';
+        const geminiKey = isCleanKey(rawGemini) ? rawGemini.trim() : '';
 
-        const groqKey = request.headers.get('x-groq-api-key') ||
+        const rawGroq = request.headers.get('x-groq-api-key') ||
             body.groqApiKey ||
             process.env.GROQ_API_KEY ||
             '';
+        const groqKey = isCleanKey(rawGroq) ? rawGroq.trim() : '';
 
         // 1. Prioridad: Google Gemini (modelo oficial multimodal estable)
         if (geminiKey) {
@@ -282,8 +292,17 @@ export default async function handler(request) {
                 console.error("Fallo Gemini:", geminiErr);
                 // Si también hay Groq, intentar fallback
                 if (!groqKey) {
+                    let userMsg = geminiErr.message;
+                    if (/API_KEY_INVALID|API key not valid/i.test(userMsg)) {
+                        userMsg = "La clave de Google Gemini no es válida. Puedes generar una gratuita en https://aistudio.google.com/apikey y configurarla en Ajustes (⚙️).";
+                    } else if (/has not been used in project|disabled/i.test(userMsg)) {
+                        userMsg = "La API de Gemini no está habilitada en tu proyecto de Google Cloud. Habilítala o crea una clave directa y gratuita en https://aistudio.google.com/apikey.";
+                    } else if (/429|RESOURCE_EXHAUSTED/i.test(userMsg)) {
+                        userMsg = "Se ha superado la cuota de peticiones por minuto. Espera unos segundos o introduce una clave propia en Ajustes (⚙️).";
+                    }
+
                     return new Response(JSON.stringify({
-                        error: `Error al clasificar con Gemini: ${geminiErr.message}`
+                        error: userMsg
                     }), {
                         status: 500,
                         headers: { 'Content-Type': 'application/json' }
@@ -313,7 +332,7 @@ export default async function handler(request) {
 
         // 3. Ni Gemini ni Groq configurados
         return new Response(JSON.stringify({
-            error: "No se ha configurado ninguna clave de Inteligencia Artificial (Gemini o Groq). Configúrala en Ajustes (icono ⚙️ en la app) o en las variables de entorno de Vercel (GEMINI_API_KEY)."
+            error: "No se ha configurado ninguna clave de Inteligencia Artificial (Gemini). Configura tu clave gratuita de Google AI Studio en Ajustes (icono ⚙️ arriba a la derecha de la app) para clasificar libros con la cámara."
         }), {
             status: 400,
             headers: { 'Content-Type': 'application/json' }
