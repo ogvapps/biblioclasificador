@@ -2,18 +2,18 @@
 import React, { useState, useEffect } from 'react';
 import { X, Calendar, User, BookOpen, Save, GraduationCap, Users } from 'lucide-react';
 import { Book, BookCondition, Student, Loan } from '../types';
-import { saveLoan, subscribeToStudents, subscribeToLoans, updateBook } from '../services/storageService';
+import { saveLoan, subscribeToStudents, subscribeToLoans, updateBook, getBooks } from '../services/storageService';
 // Helper to register loan and update book status
 const lendBook = async (loanData: Omit<Loan, 'id'>) => {
   const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2, 9));
   const loan: Loan = { ...loanData, id };
   await saveLoan(loan);
-  const books: Book[] = JSON.parse(localStorage.getItem('books') || '[]');
+  // CRÍTICO: usar getBooks() del caché en memoria, NO localStorage (que tiene coverImage truncado)
+  const books: Book[] = getBooks();
   const bookIndex = books.findIndex(b => b.id === loan.bookId);
   if (bookIndex > -1) {
-    books[bookIndex].status = 'LOANED';
-    books[bookIndex].currentLoanId = loan.id;
-    await updateBook(books[bookIndex]);
+    const updatedBook: Book = { ...books[bookIndex], status: 'LOANED', currentLoanId: loan.id };
+    await updateBook(updatedBook);
   }
 };
 
@@ -58,6 +58,18 @@ export const LoanModal: React.FC<LoanModalProps> = ({ isOpen, onClose, book }) =
     if (isOpen) {
       const unsubscribe = subscribeToStudents(setRegisteredStudents);
       const unsubscribeLoans = subscribeToLoans(setLoans);
+
+      // Resetear el formulario cada vez que se abre con un libro diferente
+      setStudentName('');
+      setGrade('');
+      setGroup('A');
+      const today = new Date().toISOString().split('T')[0];
+      setLoanDate(today);
+      const due = new Date();
+      due.setDate(due.getDate() + parseInt(localStorage.getItem('biblio_max_loan_days') || localStorage.getItem('biblio_max_days') || '15'));
+      setDueDate(due.toISOString().split('T')[0]);
+      setCondition(BookCondition.GOOD);
+
       return () => {
         unsubscribe();
         unsubscribeLoans();

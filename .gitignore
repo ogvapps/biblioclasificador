@@ -38,3 +38,5 @@ debug-*.js
 dump-models.js
 get-model-name.js
 list-groq-models.js
+metadata.json
+MOBILE_SETUP.md

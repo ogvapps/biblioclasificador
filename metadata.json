@@ -1,7 +1,0 @@
-{
-  "name": "BiblioClasificador AI",
-  "description": "Herramienta inteligente para clasificar libros de biblioteca escolar basada en etapas y géneros con codificación de colores.",
-  "requestFramePermissions": [
-    "camera"
-  ]
-}

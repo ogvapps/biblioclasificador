@@ -126,7 +126,10 @@ function cleanAndParseJSON(rawText) {
 // Clasificación usando Groq Vision (modelo multimodal oficial activo en Groq)
 async function classifyWithGroq(apiKey, base64Image, mimeType) {
     const models = [
-        "qwen/qwen3.8-27b"
+        "qwen/qwen3.8-27b",                                  // Primario (activo)
+        "meta-llama/llama-4-maverick-17b-128e-instruct",     // Fallback 1
+        "meta-llama/llama-4-scout-17b-16e-instruct",         // Fallback 2
+        "llama-3.2-90b-vision-preview",                      // Fallback 3 (Groq legacy)
     ];
 
     let lastError = null;
