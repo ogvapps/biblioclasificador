@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, User, Save } from 'lucide-react';
-import { Book, Student } from '../types';
-import { reserveBook, subscribeToStudents } from '../services/storageService';
+import { X, Calendar, User, Save, Clock } from 'lucide-react';
+import { Book, Student, Loan } from '../types';
+import { reserveBook, subscribeToStudents, subscribeToLoans } from '../services/storageService';
 
 interface ReservationModalProps {
   isOpen: boolean;
@@ -13,27 +12,35 @@ interface ReservationModalProps {
 export const ReservationModal: React.FC<ReservationModalProps> = ({ isOpen, onClose, book }) => {
   const [studentName, setStudentName] = useState('');
   const [registeredStudents, setRegisteredStudents] = useState<Student[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
 
   useEffect(() => {
     if (isOpen) {
-      const unsubscribe = subscribeToStudents(setRegisteredStudents);
+      const unsubscribeStudents = subscribeToStudents(setRegisteredStudents);
+      const unsubscribeLoans = subscribeToLoans(setLoans);
       return () => {
-        unsubscribe();
+        unsubscribeStudents();
+        unsubscribeLoans();
       };
     }
   }, [isOpen]);
 
   if (!isOpen || !book) return null;
 
+  const currentLoan = loans.find(l => l.bookId === book.id && l.status === 'ACTIVE') ||
+                      (book.currentLoanId ? loans.find(l => l.id === book.currentLoanId) : undefined);
+
+  const isLoanOverdue = currentLoan && new Date(currentLoan.dueDate) < new Date(new Date().toDateString());
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!studentName) {
+    if (!studentName.trim()) {
       alert("Por favor indica el nombre del alumno.");
       return;
     }
 
     try {
-      await reserveBook(book.id, studentName);
+      await reserveBook(book.id, studentName.trim());
       onClose();
       setStudentName('');
     } catch (error) {
@@ -47,7 +54,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({ isOpen, onCl
       <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden flex flex-col animate-in fade-in zoom-in-95">
         <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-amber-50">
           <h2 className="text-lg font-bold text-amber-900 flex items-center gap-2">
-            <Calendar className="w-5 h-5" />
+            <Calendar className="w-5 h-5 text-amber-600" />
             Reservar Libro
           </h2>
           <button onClick={onClose} className="p-2 hover:bg-white/50 rounded-full transition-colors">
@@ -56,10 +63,35 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({ isOpen, onCl
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 mb-2">
-            <p className="text-xs font-bold text-slate-400 uppercase">Libro no disponible</p>
-            <p className="font-medium text-slate-800 line-clamp-1">{book.title}</p>
-            <p className="text-xs text-slate-500 mt-1">Este libro está prestado actualmente. Al reservarlo, aparecerá marcado para el siguiente alumno.</p>
+          <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 mb-2">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Libro a reservar</p>
+            <p className="font-bold text-slate-800 line-clamp-1">{book.title}</p>
+            
+            {currentLoan ? (
+              <div className="mt-2.5 pt-2.5 border-t border-slate-200 text-xs space-y-1">
+                <p className="text-slate-600 flex items-center justify-between">
+                  <span className="text-slate-500">Lector actual:</span>
+                  <span className="font-bold text-indigo-700">{currentLoan.studentName}</span>
+                </p>
+                {currentLoan.course && (
+                  <p className="text-slate-600 flex items-center justify-between">
+                    <span className="text-slate-500">Curso:</span>
+                    <span className="font-medium text-slate-700">{currentLoan.course}</span>
+                  </p>
+                )}
+                <p className={`flex items-center justify-between ${isLoanOverdue ? 'text-red-600 font-bold' : 'text-slate-600'}`}>
+                  <span className="text-slate-500 flex items-center gap-1">
+                    <Clock className="w-3 h-3" /> F. Devolución:
+                  </span>
+                  <span>
+                    {new Date(currentLoan.dueDate).toLocaleDateString()}
+                    {isLoanOverdue && ' (Vencido)'}
+                  </span>
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500 mt-1">Este libro está prestado actualmente. Al reservarlo, aparecerá marcado para el siguiente alumno.</p>
+            )}
           </div>
 
           <div>
@@ -77,9 +109,9 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({ isOpen, onCl
                 autoFocus
               />
               <datalist id="student-suggestions-reserve">
-                 {registeredStudents.map(s => (
-                   <option key={s.id} value={s.name}>{s.course}</option>
-                 ))}
+                {registeredStudents.map(s => (
+                  <option key={s.id} value={s.name}>{s.course}</option>
+                ))}
               </datalist>
             </div>
           </div>

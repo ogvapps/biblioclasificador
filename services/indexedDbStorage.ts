@@ -183,3 +183,9 @@ export async function idbDeleteStudent(id: string): Promise<void> {
     store.delete(id);
   });
 }
+
+export async function idbClearStore(storeName: 'books' | 'loans' | 'students' | 'settings'): Promise<void> {
+  await performTransaction(storeName, 'readwrite', (store) => {
+    store.clear();
+  });
+}

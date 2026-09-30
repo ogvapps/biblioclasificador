@@ -20,7 +20,8 @@ import {
   idbGetStudents,
   idbSaveStudent,
   idbSaveStudentsBatch,
-  idbDeleteStudent
+  idbDeleteStudent,
+  idbClearStore
 } from './indexedDbStorage';
 
 function generateId(): string {
@@ -498,21 +499,28 @@ export const importFullDatabaseJSON = async (file: File): Promise<void> => {
   const data = JSON.parse(text);
 
   if (Array.isArray(data.books)) {
+    await idbClearStore('books');
     cachedBooks = data.books;
     await idbSaveBooksBatch(data.books);
+    syncLocalStorageSafe('books', cachedBooks);
   }
   if (Array.isArray(data.loans)) {
+    await idbClearStore('loans');
     cachedLoans = data.loans;
     for (const loan of data.loans) {
       await idbSaveLoan(loan);
     }
+    syncLocalStorageSafe('loans', cachedLoans);
   }
   if (Array.isArray(data.students)) {
+    await idbClearStore('students');
     cachedStudents = data.students;
     await idbSaveStudentsBatch(data.students);
+    syncLocalStorageSafe('students', cachedStudents);
   }
 
   notifyBooks();
   notifyLoans();
   notifyStudents();
 };
+
