@@ -46,12 +46,14 @@ export const LoanModal: React.FC<LoanModalProps> = ({ isOpen, onClose, book }) =
 
   const maxDays = parseInt(localStorage.getItem('biblio_max_loan_days') || localStorage.getItem('biblio_max_days') || '15');
 
-  const [loanDate, setLoanDate] = useState(new Date().toISOString().split('T')[0]);
-  const [dueDate, setDueDate] = useState(() => {
-    const d = new Date();
+  const calcDueDate = (fromDate: string) => {
+    const d = new Date(fromDate);
     d.setDate(d.getDate() + maxDays);
     return d.toISOString().split('T')[0];
-  });
+  };
+
+  const [loanDate, setLoanDate] = useState(new Date().toISOString().split('T')[0]);
+  const [dueDate, setDueDate] = useState(() => calcDueDate(new Date().toISOString().split('T')[0]));
   const [condition, setCondition] = useState<BookCondition>(BookCondition.GOOD);
 
   useEffect(() => {
@@ -231,7 +233,10 @@ export const LoanModal: React.FC<LoanModalProps> = ({ isOpen, onClose, book }) =
                 <input
                   type="date"
                   value={loanDate}
-                  onChange={(e) => setLoanDate(e.target.value)}
+                  onChange={(e) => {
+                    setLoanDate(e.target.value);
+                    setDueDate(calcDueDate(e.target.value));
+                  }}
                   className="w-full rounded-lg border-slate-300 focus:ring-indigo-500 py-2 border text-sm px-2"
                 />
               </div>

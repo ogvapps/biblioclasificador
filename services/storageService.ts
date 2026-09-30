@@ -85,21 +85,46 @@ if (typeof window !== 'undefined') {
   initializeStorage();
 }
 
+// ─── PIN hashing via Web Crypto API ─────────────────────────────────────────
+async function hashPin(pin: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(pin);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return 'sha256:' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function pinMatchesStored(pin: string, stored: string): Promise<boolean> {
+  // Backward compat: stored value without prefix is legacy plain text
+  if (!stored.startsWith('sha256:')) {
+    return pin === stored;
+  }
+  const hashed = await hashPin(pin);
+  return hashed === stored;
+}
+
 // PIN Management
-export const validateAdminPin = (pin: string): boolean => {
-  return pin === (localStorage.getItem('admin_pin') || '1234');
+export const validateAdminPin = async (pin: string): Promise<boolean> => {
+  const stored = localStorage.getItem('admin_pin') || '1234';
+  return pinMatchesStored(pin, stored);
 };
 
-export const setAdminPin = (pin: string): void => {
-  localStorage.setItem('admin_pin', pin);
+export const setAdminPin = async (pin: string): Promise<void> => {
+  const hashed = await hashPin(pin);
+  localStorage.setItem('admin_pin', hashed);
 };
 
-export const verifyUserPin = (pin: string): UserRole | null => {
-  const adminPin = localStorage.getItem('admin_pin') || '1234';
-  const assistantPin = localStorage.getItem('assistant_pin') || '0000';
+export const setAssistantPin = async (pin: string): Promise<void> => {
+  const hashed = await hashPin(pin);
+  localStorage.setItem('assistant_pin', hashed);
+};
 
-  if (pin === adminPin) return 'ADMIN';
-  if (pin === assistantPin) return 'ASSISTANT';
+export const verifyUserPin = async (pin: string): Promise<UserRole | null> => {
+  const adminStored = localStorage.getItem('admin_pin') || '1234';
+  const assistantStored = localStorage.getItem('assistant_pin') || '0000';
+
+  if (await pinMatchesStored(pin, adminStored)) return 'ADMIN';
+  if (await pinMatchesStored(pin, assistantStored)) return 'ASSISTANT';
   return null;
 };
 

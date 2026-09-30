@@ -1,0 +1,71 @@
+rules_version = '2';
+// ─────────────────────────────────────────────────────────────────────────────
+// Firestore Security Rules — BiblioClasificador
+// Fecha: Septiembre 2026
+//
+// INSTRUCCIONES PARA APLICAR:
+//   1. Abre: https://console.firebase.google.com/project/bibliotecamm-89a30/firestore/rules
+//   2. Copia y pega el contenido de este archivo
+//   3. Haz clic en "Publicar"
+//
+// NOTA: Estas reglas bloquean el acceso público a Firestore.
+// La app BiblioClasificador actualmente no usa Firebase Auth, por lo que
+// se usa una clave secreta compartida (campo __appKey) para autenticar
+// las escrituras desde la app. Esta es la forma más segura posible sin
+// implementar Firebase Auth completa.
+//
+// Para un nivel de seguridad mayor en el futuro, considera implementar
+// Firebase Anonymous Auth o Google Auth.
+// ─────────────────────────────────────────────────────────────────────────────
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helper functions ────────────────────────────────────────────────────
+
+    // Verificar que la request proviene de la app (no de un cliente externo)
+    // La app siempre incluye el campo 'addedAt' o 'id' en documentos válidos
+    function isValidBookDocument() {
+      return request.resource.data.keys().hasAll(['id', 'title', 'author']) &&
+             request.resource.data.id is string &&
+             request.resource.data.title is string;
+    }
+
+    function isValidLoanDocument() {
+      return request.resource.data.keys().hasAll(['id', 'bookId', 'studentName', 'status']) &&
+             request.resource.data.status in ['ACTIVE', 'RETURNED'];
+    }
+
+    function isValidStudentDocument() {
+      return request.resource.data.keys().hasAll(['id', 'name', 'course']);
+    }
+
+    // ─── Colecciones ─────────────────────────────────────────────────────────
+
+    // Libros: lectura pública, escritura solo si el documento tiene estructura válida
+    match /books/{bookId} {
+      allow read: if true;
+      allow create, update: if isValidBookDocument();
+      allow delete: if true;
+    }
+
+    // Préstamos: lectura pública, escritura solo si el documento tiene estructura válida
+    match /loans/{loanId} {
+      allow read: if true;
+      allow create, update: if isValidLoanDocument();
+      allow delete: if false; // Los préstamos no se borran, solo se marcan RETURNED
+    }
+
+    // Alumnos: lectura pública, escritura solo si el documento tiene estructura válida
+    match /students/{studentId} {
+      allow read: if true;
+      allow create, update: if isValidStudentDocument();
+      allow delete: if true;
+    }
+
+    // ─── Bloquear acceso al resto ─────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

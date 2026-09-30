@@ -91,7 +91,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       // Save PIN if changed
       if (newPin.trim().length > 0) {
         if (newPin.length < 4) throw new Error("El PIN debe tener al menos 4 caracteres.");
-        setAdminPin(newPin);
+        await setAdminPin(newPin);
         alert("PIN de administrador actualizado.");
       }
 

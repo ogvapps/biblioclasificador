@@ -16,9 +16,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
 
   if (!isOpen) return null;
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const role = verifyUserPin(pin);
+    const role = await verifyUserPin(pin);
 
     if (role) {
       onLoginSuccess(role);
