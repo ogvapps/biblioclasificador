@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Book, Loan, EducationalStage, Student, UserRole, LiteraryGenre } from './types';
-import { Plus, Download, Upload, BookOpen, Search, Library, MapPin, Settings, CheckCircle2, Trash2, Users, Hand, History, RotateCcw, GraduationCap, LayoutDashboard, Lock, Unlock, FileSpreadsheet, Filter, ArrowUpDown, ArrowUp, ArrowDown, XCircle, User, UserPlus, Cloud, CloudOff, Menu, ChevronDown, ChevronUp, Printer, CheckSquare, Square, Calendar, Eye, LogIn } from 'lucide-react';
+import { Plus, Download, Upload, BookOpen, Search, Library, MapPin, Settings, CheckCircle2, Trash2, Users, Hand, History, RotateCcw, GraduationCap, LayoutDashboard, Lock, Unlock, FileSpreadsheet, Filter, ArrowUpDown, ArrowUp, ArrowDown, XCircle, User, UserPlus, Cloud, CloudOff, Menu, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Printer, CheckSquare, Square, Calendar, Eye, LogIn } from 'lucide-react';
 import { AddBookModal } from './components/AddBookModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ConfirmationModal } from './components/ConfirmationModal';
@@ -42,6 +42,10 @@ const App: React.FC = () => {
   const [genreFilter, setGenreFilter] = useState<string>('ALL');
   const [availabilityFilter, setAvailabilityFilter] = useState<'ALL' | 'AVAILABLE' | 'LOANED'>('ALL');
   const [sortConfig, setSortConfig] = useState<{ key: keyof Book | 'status', direction: 'asc' | 'desc' }>({ key: 'addedAt', direction: 'desc' });
+
+  // Pagination
+  const BOOKS_PER_PAGE = 30;
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Selection Mode State
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -272,12 +276,38 @@ const App: React.FC = () => {
     }));
   };
 
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, stageFilter, genreFilter, availabilityFilter]);
+
+  // Keep detailsBook in sync when books update
+  useEffect(() => {
+    if (detailsBook) {
+      const fresh = books.find(b => b.id === detailsBook.id);
+      if (fresh && fresh !== detailsBook) {
+        setDetailsBook(fresh);
+      }
+    }
+  }, [books, detailsBook]);
+
   const filteredBooks = useMemo(() => {
+    const term = searchTerm.toLowerCase().trim();
+
     let result = books.filter(b => {
-      // 1. Search Term
-      const matchesSearch =
-        b.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        b.author?.toLowerCase().includes(searchTerm.toLowerCase());
+      // 1. Search Term (Title, Author, Synopsis, Barcode, Column/Shelf)
+      let matchesSearch = true;
+      if (term) {
+        matchesSearch =
+          (b.title?.toLowerCase().includes(term) ?? false) ||
+          (b.author?.toLowerCase().includes(term) ?? false) ||
+          (b.synopsis?.toLowerCase().includes(term) ?? false) ||
+          (b.barcode?.toLowerCase().includes(term) ?? false) ||
+          `c${b.column}` === term ||
+          `b${b.shelf}` === term ||
+          `c${b.column} b${b.shelf}` === term ||
+          `c${b.column}/b${b.shelf}` === term;
+      }
 
       // 2. Stage Filter
       let matchesStage = true;
@@ -330,10 +360,22 @@ const App: React.FC = () => {
     });
   }, [books, searchTerm, stageFilter, genreFilter, availabilityFilter, sortConfig]);
 
-  const filteredLoans = loans.filter(l =>
-    l.studentName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    l.bookTitle?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Pagination computations
+  const totalPages = Math.max(1, Math.ceil(filteredBooks.length / BOOKS_PER_PAGE));
+  const paginatedBooks = useMemo(() => {
+    const start = (currentPage - 1) * BOOKS_PER_PAGE;
+    return filteredBooks.slice(start, start + BOOKS_PER_PAGE);
+  }, [filteredBooks, currentPage, BOOKS_PER_PAGE]);
+
+  const filteredLoans = useMemo(() => {
+    const term = searchTerm.toLowerCase().trim();
+    if (!term) return loans;
+    return loans.filter(l =>
+      l.studentName?.toLowerCase().includes(term) ||
+      l.bookTitle?.toLowerCase().includes(term) ||
+      l.course?.toLowerCase().includes(term)
+    );
+  }, [loans, searchTerm]);
 
   const allStudents = useMemo(() => {
     const studentMap = new Map<string, { id?: string, name: string, course: string, active: number, total: number, registered: boolean }>();
@@ -650,8 +692,8 @@ const App: React.FC = () => {
             )}
 
             {/* Mobile Cards View */}
-            <div className="md:hidden space-y-3 pb-20">
-              {filteredBooks.map((book) => (
+            <div className="md:hidden space-y-3 pb-6">
+              {paginatedBooks.map((book) => (
                 <div
                   key={book.id}
                   onClick={() => isSelectionMode ? toggleBookSelection(book.id) : setDetailsBook(book)}
@@ -776,7 +818,7 @@ const App: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-slate-200">
-                  {filteredBooks.map((book) => (
+                  {paginatedBooks.map((book) => (
                     <tr
                       key={book.id}
                       onClick={() => isSelectionMode ? toggleBookSelection(book.id) : setDetailsBook(book)}
@@ -859,6 +901,44 @@ const App: React.FC = () => {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <div className="text-xs text-slate-500 font-medium">
+                  Mostrando <span className="font-bold text-slate-800">{(currentPage - 1) * BOOKS_PER_PAGE + 1}</span> a{' '}
+                  <span className="font-bold text-slate-800">{Math.min(currentPage * BOOKS_PER_PAGE, filteredBooks.length)}</span> de{' '}
+                  <span className="font-bold text-slate-800">{filteredBooks.length}</span> libros
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setCurrentPage(p => Math.max(1, p - 1));
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    disabled={currentPage === 1}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    Anterior
+                  </button>
+                  <span className="text-xs font-semibold px-2 text-slate-600">
+                    Página {currentPage} de {totalPages}
+                  </span>
+                  <button
+                    onClick={() => {
+                      setCurrentPage(p => Math.min(totalPages, p + 1));
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    disabled={currentPage === totalPages}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Siguiente
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -991,7 +1071,7 @@ const App: React.FC = () => {
       <ConfirmationModal isOpen={!!deleteTarget} title="¿Eliminar?" message="Esta acción no se puede deshacer." onClose={() => setDeleteTarget(null)} onConfirm={executeDelete} confirmText="Eliminar" />
       <LoanModal isOpen={!!loanModalBook} book={loanModalBook} onClose={() => setLoanModalBook(null)} />
       <ReturnModal isOpen={!!returnModalLoan} loan={returnModalLoan} onClose={() => setReturnModalLoan(null)} />
-      <BookDetailsModal isOpen={!!detailsBook} book={detailsBook} onClose={() => setDetailsBook(null)} />
+      <BookDetailsModal isOpen={!!detailsBook} book={detailsBook} onClose={() => setDetailsBook(null)} canEdit={userRole !== 'STUDENT'} />
       <StudentDetailsModal isOpen={!!selectedStudent} studentName={selectedStudent} allLoans={loans} onClose={() => setSelectedStudent(null)} />
       <PrintLabelsModal isOpen={isPrintModalOpen} books={getSelectedBooksList()} onClose={() => setIsPrintModalOpen(false)} />
       <ReservationModal isOpen={!!reservationModalBook} book={reservationModalBook} onClose={() => setReservationModalBook(null)} />
