@@ -82,7 +82,7 @@ export interface Book {
   barcode?: string; // For physical scanning
 }
 
-export interface GeminiBookAnalysis {
+export interface BookAIAnalysis {
   title: string;
   author: string;
   age: number;
@@ -91,3 +91,6 @@ export interface GeminiBookAnalysis {
   synopsis: string;
   reasoning: string;
 }
+
+// Backwards compatibility alias
+export type GeminiBookAnalysis = BookAIAnalysis;

@@ -55,7 +55,7 @@ Verás algo así en la terminal:
 1. Entra con PIN de administrador
 2. Ve a **Añadir libro** → pulsa **📷 Hacer Foto (Móvil)**
 3. La cámara trasera se activa — enfoca la **portada** del libro
-4. La IA (Groq Llama-4-Scout) analiza la imagen y devuelve:
+4. La IA (Groq Vision) analiza la imagen y devuelve:
    - Título, Autor, Sinopsis, Etapa educativa, Género
 5. Revisa los datos, asigna **columna/balda** y guarda
 6. Repite para cada libro de la biblioteca

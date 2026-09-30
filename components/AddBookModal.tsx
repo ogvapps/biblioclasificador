@@ -1,8 +1,7 @@
-
 import React, { useState, useRef } from 'react';
 import { X, Upload, Loader2, Save, Camera, Trash2, Plus, AlertTriangle, Library, ScanBarcode, Search, BookOpen } from 'lucide-react';
-import { EducationalStage, LiteraryGenre, Book, GeminiBookAnalysis } from '../types';
-import { classifyImageWithGemini, fileToBase64 } from '../services/geminiService';
+import { EducationalStage, LiteraryGenre, Book, BookAIAnalysis } from '../types';
+import { classifyImageWithGroq, fileToBase64 } from '../services/aiClassifierService';
 import { searchBookByISBN } from '../services/googleBooksService';
 import { SpineLabel } from './SpineLabel';
 import { LIBRARY_SETTINGS } from '../constants';
@@ -16,7 +15,7 @@ interface AddBookModalProps {
 }
 
 // Temporary type for the batch list
-interface StagedBook extends GeminiBookAnalysis {
+interface StagedBook extends BookAIAnalysis {
   tempId: string;
   coverImage?: string; // Add optional cover image here to carry it over
 }
@@ -63,6 +62,24 @@ const compressImage = (base64Str: string, maxWidth = 300, quality = 0.6): Promis
   });
 };
 
+// Converts remote image URLs (like Google Books) to base64 for reliable offline storage
+const urlToBase64DataUrl = async (url: string): Promise<string> => {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return url;
+    const blob = await res.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => resolve(url);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    // If CORS or offline, return original URL gracefully
+    return url;
+  }
+};
+
 export const AddBookModal: React.FC<AddBookModalProps> = ({ isOpen, onClose, onAdd }) => {
   const [mode, setMode] = useState<'upload' | 'camera' | 'isbn'>('isbn');
   const [loading, setLoading] = useState(false);
@@ -97,16 +114,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ isOpen, onClose, onA
     setLoading(true);
     setError(null);
     setPreviewImage(imgSrc);
-    // Don't clear staged books automatically in photo mode, allows adding multiple photos? 
-    // For now, let's keep behavior consistent: replace list or append? 
-    // Current logic was replacement. Let's keep replacement for photo mode to avoid confusion.
     setStagedBooks([]);
     setColumn(0);
     setShelf(0);
 
     try {
       // 1. Optimize: Compress image before sending to AI to save bandwidth and avoid timeouts
-      // We use 1024px width which is enough for text recognition but much lighter than raw camera photos
       let imageToSend = base64;
       try {
         const compressedDataUrl = await compressImage(base64, 1024, 0.8);
@@ -115,8 +128,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ isOpen, onClose, onA
         console.warn("Compression failed, using original", compressionErr);
       }
 
-      // 2. Send to Gemini
-      const analyses: GeminiBookAnalysis[] = await classifyImageWithGemini(imageToSend);
+      // 2. Send to Groq Vision AI
+      const analyses: BookAIAnalysis[] = await classifyImageWithGroq(imageToSend);
 
       const newStagedBooks: StagedBook[] = analyses.map(analysis => ({
         ...analysis,
@@ -244,11 +257,23 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ isOpen, onClose, onA
         let bookCover = globalImage;
 
         if (sb.coverImage) {
-          // If Google provided a cover, we might need to compress it too or verify it's a data URL
-          if (!sb.coverImage.startsWith('data:')) {
-            bookCover = `data:image/jpeg;base64,${sb.coverImage}`;
-          } else {
+          if (sb.coverImage.startsWith('data:')) {
             bookCover = sb.coverImage;
+          } else if (sb.coverImage.startsWith('http://') || sb.coverImage.startsWith('https://')) {
+            // Convert remote URL to base64 data URL for offline storage
+            const dataUrl = await urlToBase64DataUrl(sb.coverImage);
+            if (dataUrl.startsWith('data:')) {
+              try {
+                bookCover = await compressImage(dataUrl, 300, 0.6);
+              } catch {
+                bookCover = dataUrl;
+              }
+            } else {
+              bookCover = dataUrl;
+            }
+          } else {
+            // Raw base64 string without data: prefix
+            bookCover = `data:image/jpeg;base64,${sb.coverImage}`;
           }
         }
 

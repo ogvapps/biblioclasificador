@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5" />
+      <stop offset="100%" stop-color="#3730a3" />
+    </linearGradient>
+  </defs>
+  <!-- Background with rounded corners -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+  
+  <!-- Stack of Books icon -->
+  <g fill="none" stroke="#ffffff" stroke-width="26" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Main Book Spine / Book Open -->
+    <path d="M120 380V160c0-26 22-44 48-44h68c24 0 44 14 44 38v226c-20-14-44-20-68-20h-44c-26 0-48 8-48 20z" fill="#ffffff" fill-opacity="0.12" />
+    <path d="M392 380V160c0-26-22-44-48-44h-68c-24 0-44 14-44 38v226c20-14 44-20 68-20h44c26 0 48 8 48 20z" fill="#ffffff" fill-opacity="0.12" />
+    <line x1="280" y1="154" x2="280" y2="380" />
+    
+    <!-- Colored Classification Spine Dots -->
+    <circle cx="170" cy="220" r="14" fill="#ef4444" stroke="#ffffff" stroke-width="6" />
+    <circle cx="170" cy="270" r="14" fill="#3b82f6" stroke="#ffffff" stroke-width="6" />
+    <circle cx="170" cy="320" r="14" fill="#eab308" stroke="#ffffff" stroke-width="6" />
+    
+    <circle cx="342" cy="220" r="14" fill="#10b981" stroke="#ffffff" stroke-width="6" />
+    <circle cx="342" cy="270" r="14" fill="#a855f7" stroke="#ffffff" stroke-width="6" />
+    <circle cx="342" cy="320" r="14" fill="#f97316" stroke="#ffffff" stroke-width="6" />
+  </g>
+</svg>
