@@ -15,7 +15,7 @@ import { SpineLabel } from './components/SpineLabel';
 import { PrintLabelsModal } from './components/PrintLabelsModal';
 import { ReservationModal } from './components/ReservationModal';
 import { exportToExcel, importFromExcel, importStudentsFromExcel, downloadStudentTemplate, prepareExcelData } from './services/excelService';
-import { subscribeToBooks, subscribeToLoans, subscribeToStudents, addBooksBatch, deleteBook, deleteStudent, addStudentsBatch, isCloudConnected } from './services/storageService';
+import { subscribeToBooks, subscribeToLoans, subscribeToStudents, addBooksBatch, deleteBook, deleteBooksBatch, deleteStudent, addStudentsBatch, isCloudConnected } from './services/storageService';
 
 const App: React.FC = () => {
   // Role State: Default is STUDENT (View Only)
@@ -163,6 +163,26 @@ const App: React.FC = () => {
       setDeleteTarget(null);
     }
   };
+
+  const [showBatchDeleteModal, setShowBatchDeleteModal] = useState(false);
+
+  const executeBatchDelete = async () => {
+    const ids = Array.from(selectedBookIds);
+    if (ids.length === 0) return;
+    try {
+      await deleteBooksBatch(ids);
+      setSelectedBookIds(new Set());
+      setIsSelectionMode(false);
+      setShowSuccessToast(true);
+      setTimeout(() => setShowSuccessToast(false), 3000);
+    } catch (error) {
+      console.error("Error en eliminación por lote:", error);
+      alert("Hubo un error al eliminar los libros seleccionados.");
+    } finally {
+      setShowBatchDeleteModal(false);
+    }
+  };
+
 
   const handleExport = async () => {
     await exportToExcel(prepareExcelData(loans, books, registeredStudents), `${appName.replace(/\s+/g, '_')}_Export`);
@@ -611,7 +631,7 @@ const App: React.FC = () => {
                       {selectedBookIds.size === filteredBooks.length ? 'Deseleccionar' : 'Todos'}
                     </button>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
                     <button
                       onClick={() => setIsPrintModalOpen(true)}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-100"
@@ -619,7 +639,16 @@ const App: React.FC = () => {
                       <Printer className="w-4 h-4" />
                       <span className="hidden sm:inline">Imprimir Tejuelos</span>
                     </button>
-                    {/* Future: Batch Delete */}
+                    {userRole === 'ADMIN' && (
+                      <button
+                        onClick={() => setShowBatchDeleteModal(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-bold transition-colors"
+                        title="Eliminar libros seleccionados"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span className="hidden sm:inline">Eliminar</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -1069,6 +1098,14 @@ const App: React.FC = () => {
       <AddStudentModal isOpen={isStudentModalOpen} onClose={() => setIsStudentModalOpen(false)} />
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
       <ConfirmationModal isOpen={!!deleteTarget} title="¿Eliminar?" message="Esta acción no se puede deshacer." onClose={() => setDeleteTarget(null)} onConfirm={executeDelete} confirmText="Eliminar" />
+      <ConfirmationModal
+        isOpen={showBatchDeleteModal}
+        title="¿Eliminar libros seleccionados?"
+        message={`Estás a punto de eliminar ${selectedBookIds.size} libros del inventario. Esta acción no se puede deshacer.`}
+        onClose={() => setShowBatchDeleteModal(false)}
+        onConfirm={executeBatchDelete}
+        confirmText="Eliminar todos"
+      />
       <LoanModal isOpen={!!loanModalBook} book={loanModalBook} onClose={() => setLoanModalBook(null)} />
       <ReturnModal isOpen={!!returnModalLoan} loan={returnModalLoan} onClose={() => setReturnModalLoan(null)} />
       <BookDetailsModal isOpen={!!detailsBook} book={detailsBook} onClose={() => setDetailsBook(null)} canEdit={userRole !== 'STUDENT'} />

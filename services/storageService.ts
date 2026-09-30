@@ -346,6 +346,19 @@ export const deleteBook = async (id: string): Promise<void> => {
   deleteBookFromFirestore(id).catch(() => {});
 };
 
+export const deleteBooksBatch = async (ids: string[]): Promise<void> => {
+  if (!ids || ids.length === 0) return;
+  const idSet = new Set(ids);
+  cachedBooks = cachedBooks.filter(b => !idSet.has(b.id));
+  for (const id of ids) {
+    await idbDeleteBook(id);
+    deleteBookFromFirestore(id).catch(() => {});
+  }
+  syncLocalStorageSafe('books', cachedBooks);
+  notifyBooks();
+};
+
+
 export const reserveBook = async (bookId: string, studentName: string): Promise<void> => {
   const bookIndex = cachedBooks.findIndex(b => b.id === bookId);
   if (bookIndex > -1) {

@@ -17,3 +17,12 @@ root.render(
     </ErrorBoundary>
   </React.StrictMode>
 );
+
+// Register Service Worker for true offline PWA support
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.debug('ServiceWorker registration error:', err);
+    });
+  });
+}
