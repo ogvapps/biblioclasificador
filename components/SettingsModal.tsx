@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, KeyRound, Cloud, LogOut, Image as ImageIcon, Paintbrush, BookOpen, Clock, Building2, CheckCircle, XCircle, RefreshCw, Sparkles, UploadCloud, DownloadCloud } from 'lucide-react';
-import { setAdminPin, saveFirebaseConfig, getFirebaseConfig, clearFirebaseConfig, isCloudConnected, initFirestoreSync, syncWithCloud, pushAllToCloud } from '../services/storageService';
+import { setAdminPin, saveFirebaseConfig, getFirebaseConfig, clearFirebaseConfig, isCloudConnected, initFirestoreSync, syncWithCloud, pushAllToCloud, subscribeToCloudRole, signInCloud, signOutCloud, CloudRole } from '../services/storageService';
 
 
 interface SettingsModalProps {
@@ -38,6 +38,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [hasConfig, setHasConfig] = useState(false);
   const [cloudConnected, setCloudConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // Cloud account (Firebase Auth) used for syncing
+  const [cloudRole, setCloudRole] = useState<CloudRole>(null);
+  const [cloudEmail, setCloudEmail] = useState<string | null>(null);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+
+  useEffect(() => subscribeToCloudRole((role, email) => {
+    setCloudRole(role);
+    setCloudEmail(email);
+  }), []);
+
+  const handleCloudSignIn = async () => {
+    try {
+      setIsSyncing(true);
+      const role = await signInCloud(loginEmail.trim(), loginPassword);
+      setLoginPassword('');
+      await syncWithCloud();
+      alert(`✅ Sesión iniciada en la nube como ${role === 'ADMIN' ? 'administrador' : 'ayudante'}.`);
+    } catch (err: any) {
+      const code = err?.code || '';
+      alert(/invalid-credential|wrong-password|user-not-found|invalid-email/.test(code)
+        ? 'Correo o contraseña incorrectos.'
+        : 'No se pudo iniciar sesión: ' + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleCloudSignOut = async () => {
+    await signOutCloud();
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -148,6 +180,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   const handleDisconnect = () => {
     if (confirm("¿Estás seguro de desconectar la base de datos? La aplicación volverá a modo local.")) {
+      signOutCloud().catch(() => {});
       clearFirebaseConfig();
       onClose();
     }
@@ -313,6 +346,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 Ingresa los datos de tu proyecto Firebase (Firestore) para sincronizar el catálogo entre dispositivos.{' '}
                 <a href="https://console.firebase.google.com" target="_blank" rel="noopener noreferrer" className="text-indigo-500 underline">Abrir consola Firebase →</a>
               </p>
+
+              {hasConfig && cloudConnected && (
+                <div className="bg-white p-3 rounded-lg border border-slate-200 space-y-2">
+                  <p className="text-xs font-bold text-slate-500 uppercase">Cuenta de la nube</p>
+                  {cloudRole ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-slate-700 break-all">
+                        {cloudEmail} · <strong>{cloudRole === 'ADMIN' ? 'Administrador' : 'Ayudante'}</strong>
+                      </span>
+                      <button type="button" onClick={handleCloudSignOut} className="text-xs text-red-500 hover:text-red-700 font-bold flex items-center gap-1 shrink-0">
+                        <LogOut className="w-3 h-3" /> Cerrar sesión
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-xs text-slate-500">
+                        Sin sesión solo se descarga el catálogo. Inicia sesión con una cuenta de bibliotecario para sincronizar préstamos y alumnos.
+                      </p>
+                      <input type="email" autoComplete="username" placeholder="Correo" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} className="w-full p-2 border border-slate-300 rounded text-xs" />
+                      <input type="password" autoComplete="current-password" placeholder="Contraseña" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} className="w-full p-2 border border-slate-300 rounded text-xs" />
+                      <button
+                        type="button"
+                        onClick={handleCloudSignIn}
+                        disabled={isSyncing || !loginEmail || !loginPassword}
+                        className="w-full py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-50"
+                      >
+                        Iniciar sesión en la nube
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
 
               {hasConfig && (
                 <div className="flex flex-col sm:flex-row gap-2 py-2 border-y border-slate-200">

@@ -1,3 +1,5 @@
+import { createRemoteJWKSet, jwtVerify } from 'jose';
+
 export const config = {
     runtime: 'edge',
 };
@@ -183,6 +185,49 @@ async function classifyWithGroq(apiKey, base64Image, mimeType) {
     throw new Error(lastError || "No se pudo clasificar la imagen con Groq");
 }
 
+// Base64 of a ~2.2 MB image; the client already compresses before sending
+const MAX_IMAGE_BASE64_LENGTH = 3_000_000;
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+// Public keys Firebase Auth uses to sign ID tokens
+const FIREBASE_JWKS = createRemoteJWKSet(
+    new URL('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com')
+);
+
+const jsonResponse = (body, status) => new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' }
+});
+
+// True when the request carries a valid Firebase ID token of our project whose
+// account has role ADMIN. The role is read with the caller's own token, so
+// firestore.rules decide what this endpoint can see.
+async function isCloudAdmin(request, projectId) {
+    const header = request.headers.get('Authorization') || '';
+    const idToken = header.startsWith('Bearer ') ? header.slice(7) : null;
+    if (!idToken) return false;
+
+    let uid;
+    try {
+        const { payload } = await jwtVerify(idToken, FIREBASE_JWKS, {
+            issuer: `https://securetoken.google.com/${projectId}`,
+            audience: projectId,
+        });
+        uid = payload.sub;
+    } catch (e) {
+        return false;
+    }
+    if (!uid) return false;
+
+    const roleResponse = await fetch(
+        `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${encodeURIComponent(uid)}`,
+        { headers: { 'Authorization': `Bearer ${idToken}` } }
+    );
+    if (!roleResponse.ok) return false;
+    const userDoc = await roleResponse.json();
+    return userDoc?.fields?.role?.stringValue === 'ADMIN';
+}
+
 export default async function handler(request) {
     if (request.method !== 'POST') {
         return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
@@ -195,11 +240,17 @@ export default async function handler(request) {
         const body = await request.json().catch(() => ({}));
         const { image, mimeType } = body;
 
-        if (!image) {
+        if (!image || typeof image !== 'string') {
             return new Response(JSON.stringify({ error: 'No se recibió ninguna imagen para clasificar' }), {
                 status: 400,
                 headers: { 'Content-Type': 'application/json' }
             });
+        }
+        if (image.length > MAX_IMAGE_BASE64_LENGTH) {
+            return jsonResponse({ error: 'La imagen es demasiado grande' }, 413);
+        }
+        if (mimeType && !ALLOWED_MIME_TYPES.includes(mimeType)) {
+            return jsonResponse({ error: 'Tipo de imagen no soportado' }, 400);
         }
 
         function isCleanKey(k) {
@@ -210,12 +261,21 @@ export default async function handler(request) {
             return true;
         }
 
-        // Obtener clave de Groq desde cabecera, cuerpo o variables de entorno
-        const rawGroq = request.headers.get('x-groq-api-key') ||
-            body.groqApiKey ||
-            process.env.GROQ_API_KEY ||
-            '';
-        const groqKey = isCleanKey(rawGroq) ? rawGroq.trim() : '';
+        // Clave de Groq: la del propio usuario (cabecera o cuerpo) o la del servidor.
+        // La del servidor la paga el centro, así que solo la usan administradores
+        // con sesión en la nube.
+        const clientGroq = request.headers.get('x-groq-api-key') || body.groqApiKey || '';
+        let groqKey = isCleanKey(clientGroq) ? clientGroq.trim() : '';
+
+        if (!groqKey && isCleanKey(process.env.GROQ_API_KEY)) {
+            const projectId = process.env.FIREBASE_PROJECT_ID;
+            if (!projectId || !(await isCloudAdmin(request, projectId))) {
+                return jsonResponse({
+                    error: "Para usar la clave de IA del centro inicia sesión en la nube como administrador (Ajustes ⚙️ → Cuenta de la nube), o introduce tu propia clave de Groq en Ajustes."
+                }, 401);
+            }
+            groqKey = process.env.GROQ_API_KEY.trim();
+        }
 
         if (!groqKey) {
             return new Response(JSON.stringify({

@@ -1,4 +1,5 @@
 import { BookAIAnalysis } from '../types';
+import { getCloudIdToken } from './firestoreSync';
 
 export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -24,6 +25,9 @@ export async function classifyImageWithGroq(base64Image: string, mimeType = 'ima
       'Content-Type': 'application/json'
     };
     if (groqKey) headers['x-groq-api-key'] = groqKey;
+    // Without a personal key, the server's key requires a signed-in cloud admin
+    const idToken = groqKey ? null : await getCloudIdToken();
+    if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
 
     const response = await fetch('/api/classify', {
       method: 'POST',
