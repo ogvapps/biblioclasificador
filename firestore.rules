@@ -1,69 +1,74 @@
 rules_version = '2';
 // ─────────────────────────────────────────────────────────────────────────────
 // Firestore Security Rules — BiblioClasificador
-// Fecha: Septiembre 2026
 //
-// INSTRUCCIONES PARA APLICAR:
-//   1. Abre: https://console.firebase.google.com/project/bibliotecamm-89a30/firestore/rules
-//   2. Copia y pega el contenido de este archivo
-//   3. Haz clic en "Publicar"
+// La app es offline-first: el PIN abre la interfaz en cada dispositivo y la
+// sincronización con la nube exige una cuenta de Firebase Auth (Ajustes →
+// Cuenta de la nube). Cada cuenta tiene un documento users/{uid} con
+// { role: 'ADMIN' | 'ASSISTANT' }, creado desde la consola de Firebase;
+// nadie puede asignarse un rol desde la app.
 //
-// NOTA: Estas reglas bloquean el acceso público a Firestore.
-// La app BiblioClasificador actualmente no usa Firebase Auth, por lo que
-// se usa una clave secreta compartida (campo __appKey) para autenticar
-// las escrituras desde la app. Esta es la forma más segura posible sin
-// implementar Firebase Auth completa.
-//
-// Para un nivel de seguridad mayor en el futuro, considera implementar
-// Firebase Anonymous Auth o Google Auth.
+// Aplicar: consola de Firebase → Firestore → Reglas → pegar → Publicar,
+// o `npx firebase-tools deploy --only firestore:rules`.
 // ─────────────────────────────────────────────────────────────────────────────
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ─── Helper functions ────────────────────────────────────────────────────
-
-    // Verificar que la request proviene de la app (no de un cliente externo)
-    // La app siempre incluye el campo 'addedAt' o 'id' en documentos válidos
-    function isValidBookDocument() {
-      return request.resource.data.keys().hasAll(['id', 'title', 'author']) &&
-             request.resource.data.id is string &&
-             request.resource.data.title is string;
+    function signedIn() {
+      return request.auth != null;
     }
 
-    function isValidLoanDocument() {
-      return request.resource.data.keys().hasAll(['id', 'bookId', 'studentName', 'status']) &&
-             request.resource.data.status in ['ACTIVE', 'RETURNED'];
+    function role() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
 
-    function isValidStudentDocument() {
-      return request.resource.data.keys().hasAll(['id', 'name', 'course']);
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && role() == 'ADMIN';
     }
 
-    // ─── Colecciones ─────────────────────────────────────────────────────────
+    function isStaff() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && role() in ['ADMIN', 'ASSISTANT'];
+    }
 
-    // Libros: lectura pública, escritura solo si el documento tiene estructura válida
+    // Campos que cambian al prestar, devolver y reservar (LoanModal,
+    // ReturnModal, ReservationModal). El resto del libro solo lo edita el admin.
+    function onlyCirculationFields() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['currentLoanId', 'status', 'condition', 'reservation', 'rating', 'totalRatings']);
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // El catálogo es público (modo alumno); gestionarlo es cosa del admin
     match /books/{bookId} {
       allow read: if true;
-      allow create, update: if isValidBookDocument();
-      allow delete: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (isStaff() && onlyCirculationFields());
     }
 
-    // Préstamos: lectura pública, escritura solo si el documento tiene estructura válida
+    // Préstamos y alumnos contienen datos personales de menores
     match /loans/{loanId} {
-      allow read: if true;
-      allow create, update: if isValidLoanDocument();
+      allow read: if isStaff();
+      allow create, update: if isStaff()
+        && request.resource.data.keys().hasAll(['id', 'bookId', 'studentName', 'status'])
+        && request.resource.data.id == loanId
+        && request.resource.data.status in ['ACTIVE', 'RETURNED'];
       allow delete: if false; // Los préstamos no se borran, solo se marcan RETURNED
     }
 
-    // Alumnos: lectura pública, escritura solo si el documento tiene estructura válida
     match /students/{studentId} {
-      allow read: if true;
-      allow create, update: if isValidStudentDocument();
-      allow delete: if true;
+      allow read: if isStaff();
+      allow write: if isAdmin();
     }
 
-    // ─── Bloquear acceso al resto ─────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
     }

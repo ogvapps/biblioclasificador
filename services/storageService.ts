@@ -10,6 +10,15 @@ import {
   pullFromFirestore,
   pushToFirestore
 } from './firestoreSync';
+export {
+  getCloudRole,
+  getCloudEmail,
+  subscribeToCloudRole,
+  signInCloud,
+  signOutCloud,
+  getCloudIdToken
+} from './firestoreSync';
+export type { CloudRole } from './firestoreSync';
 import {
   idbGetBooks,
   idbSaveBook,
@@ -127,6 +136,22 @@ export const verifyUserPin = async (pin: string): Promise<UserRole | null> => {
   if (await pinMatchesStored(pin, adminStored)) return 'ADMIN';
   if (await pinMatchesStored(pin, assistantStored)) return 'ASSISTANT';
   return null;
+};
+
+// The defaults (1234 / 0000) are public in the repository, so the login
+// forces a change the first time a role enters with its default PIN.
+export const isDefaultPin = (role: UserRole): boolean => {
+  if (role === 'ADMIN') return !localStorage.getItem('admin_pin');
+  if (role === 'ASSISTANT') return !localStorage.getItem('assistant_pin');
+  return false;
+};
+
+export const replaceDefaultPin = async (role: UserRole, newPin: string): Promise<void> => {
+  if (!/^\d{4,}$/.test(newPin)) throw new Error('El PIN debe tener al menos 4 dígitos.');
+  if (newPin === '1234' || newPin === '0000') throw new Error('Elige un PIN distinto de los de fábrica.');
+  if (await verifyUserPin(newPin)) throw new Error('Ese PIN ya lo usa otro rol.');
+  if (role === 'ADMIN') await setAdminPin(newPin);
+  else if (role === 'ASSISTANT') await setAssistantPin(newPin);
 };
 
 // Firebase Config / Cloud status
